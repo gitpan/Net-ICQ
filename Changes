@@ -1,80 +1,51 @@
-(NB:  See Credits section of the README for expansion of the
-      names in [...], all the ones without square brackets were
-      done by Bek Oberin.)
+Changes for Net::ICQ
+====================
 
-0.07 -> 0.08
-   - dword_2_hex renamed dword_to_chars to match other names.
-   - utility function decimal_to_hex added.
-   - Example client now uses config files, sorta.
-   - Added new 'Birthday' status.
-   - New skeleton function receive_end_contactlist_status(),
-     receive_not_logged_in().
-   - Added new server packet 0xF000, NOT_LOGGED_IN.
-   - Altered logon sequence according to what Graham Roff
-     <graham@modemcable149.173.mmtl.videotron.net> posted to the list
-     about it.
-   - Renamed some packet types (and associated functions, etc.) to be 
-     more clear:  
-        LOGIN_1 to REQUEST_OFFLINE_MESSAGES, 
-        REPLY_X1 to END_CONTACTLIST_STATUS, 
-        REPLY_X2 to END_OFFLINE_MESSAGES, 
-        CMD_X1 to ACK_OFFLINE_MESSAGES, 
 
-0.06 -> 0.07
-   - Added separate TODO file.
-   - Added a bunch more debug output.
-   - SILENT_TOO_LONG packet now handled and replied too with a
-     KEEPALIVE packet.
-   - Made sure every function always returns some value.
-   - packet_waiting now accepts a timeout argument.
-   - Many changes to example client, it's now almost functional!
+0.10
+====
 
-0.05 -> 0.06
-   - Makefile now checks for IO::Select, Carp, Sys::Hostname, 
-     Data::Dumper and IO::Socket since people reported them
-     missing and I'm not sure when each of them became stardard
-     Perl modules.
-   - Fixed packet number for GO_AWAY packet.
-   - Better debugging info when unknown packet received.
-   - Added TRY_AGAIN server packet type.
+- Complete rewrite started.  Project is now being maintained by Luke
+  Petre <luke@petre.net> and Jeremy Muhlich <jmuhlich@acm.jhu.edu>.
+- Initial interface laid out. (event-driven style)
+- Can log in to a server.
 
-0.04 -> 0.05
-   - Added new argument, $status, to constructor.
-   - Updated README file, added info about icq-dev@tertius.net.au.
-   - New file, README.developers with code comments.
-   - [Jah] Removed find_incoming_port() which shouldn't have been
-     there in the first place.
-   - [Jah] Added dword_2_chars() function to convert to intel endian 
-     format.
-   - [Jah] Fixed construct_message() so that it wouldn't increment 
-     the sequence number when it really shouldn't.
-   - [Jah] Added LOGIN packet information to the login() function.
-   - search() now groks "Lastname, Firstname" as a name.
-   - Removed send_ack from receive_login_reply - it's already been sent
-     at that point.
-   - Cleaned up incoming_process_packet() a bit and changed the long
-     if/elsif set to use a coderef to find the method for each packet.
-   - Removed config file stuff - it's something the client should do,
-     not the library.
-   - Added "TODO" everyplace the code desperately needs frobbing, so
-     you can see with a search what needs to be done.
 
-0.03 -> 0.04
-   - Croak if we can't find a password or UIN.
-   - Added a bunch of debugging printouts.
-   - Fixed the socket stuff in incoming_process_packet().
-   - Changed stray 'warn's and 'die's to carp/croak.
+0.12
+====
 
-0.02.1 -> 0.03
-   - Fixed the pack/unpack functions.
-   - Program looks for environment variables ICQHOST and ICQPORT if
-     not specified in constructor arguments or configuration file.
-   - All the calls to construct_message() and send_message() were wrong.
-     Oops.
-   - Bunch of other stuff.  It compiles now :).
-   - Swapped username to 'uin' in code to make it clearer.
+oops, didn't keep track.  check cvs if you care.  :)  we can pull the
+cvs log entries in here in the future...
 
-0.02 -> 0.02.1
-   - Remembered I'm supposed to be keeping a changelog :)
-   - Added some skeleton functions and documentations.
 
+0.13
+====
+
+fixed status code length in CMD_USER_ONLINE (from 2 bytes to 4); implemented
+Tyler Goen's code for SRV_STATUS_UPDATE with the correct 4 byte status
+
+removed @_hex_table since it's not needed anymore
+
+Squashed bug (minor) in _do_acks
+
+enabled contact list send and receive
+
+added debug print for add_handler, cleaned up other debug prints, fixed
+do_multis so it removes multis from the queue after processing them
+
+added perl 5.6 check to Makefile.PL
+
+
+0.14
+====
+
+fixed stupid syntax error in ICQ.pm (did that go into a release...?)
+and updated test.pl to be more clear and enlightening
+
+fixed dumb Makefile.PL error, wasn't actually checking for Time::Local before
+
+made cmd_codes and srv_codes public
+
+wrote the CLIENT EVENTS section in pod
+
+added test2.pl

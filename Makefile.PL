@@ -1,15 +1,28 @@
 #
 # Skeleton Perl Makefile
 #
-# Last updated by gossamer on Mon Sep 21 08:57:16 EST 1998
+# Last updated by jmuhlich on Sun Oct 8 09:0950 EST 2000
 #
 
-require 5;
 use strict;
 
 # Check for modules we need.
 $| = 1;
 my $missing_modules = 0;
+
+
+print "Checking for Perl 5.6.0 ...";
+eval {
+    require 5.6.0;
+};
+if ($@) {
+    print " missing!\n";
+    $missing_modules++;
+    print "$@\n";
+    sleep(2);  # Don't hurry too much
+} else {
+    print " got it\n";
+}
 
 print "Checking for IO::Socket ...";
 eval {
@@ -24,21 +37,6 @@ if ($@) {
     print " got it\n";
 }
 
-
-print "Checking for Data::Dumper ...";
-eval {
-    require Data::Dumper;
-};
-if ($@) {
-    print " missing!\n";
-    $missing_modules++;
-    print "$@\n";
-    sleep(2);  # Don't hurry too much
-} else {
-    print " got it\n";
-}
-
-
 print "Checking for IO::Select ...";
 eval {
     require IO::Select;
@@ -52,10 +50,22 @@ if ($@) {
     print " got it\n";
 }
 
-
-print "Checking for Sys::Hostname ...";
+print "Checking for Time::Local ...";
 eval {
-    require Sys::Hostname;
+    require Time::Local;
+};
+if ($@) {
+    print " missing!\n";
+    $missing_modules++;
+    print "$@\n";
+    sleep(2);  # Don't hurry too much
+} else {
+    print " got it\n";
+}
+
+print "Checking for Math::BigInt ...";
+eval {
+    require Math::BigInt;
 };
 if ($@) {
     print " missing!\n";
@@ -79,18 +89,6 @@ if ($@) {
     print " got it\n";
 }
 
-print "Checking for Text::LineEditor (only needed for example client) ...";
-eval {
-    require Text::LineEditor;
-};
-if ($@) {
-    print " missing!\n";
-    $missing_modules++;
-    print "$@\n";
-    sleep(2);  # Don't hurry too much
-} else {
-    print " got it\n";
-}
 
 print <<EOT if $missing_modules;
 The missing modules can be obtained from CPAN - you'll need them to
@@ -105,25 +103,27 @@ WriteMakefile(
     'NAME'	   => 'Net::ICQ',
     'VERSION_FROM' => 'lib/Net/ICQ.pm',
 
-    'dist'         => { 
+    'dist'         => {
                          COMPRESS => 'gzip -9f',
                          SUFFIX => 'gz',
                       },
 );
 
-sub MY::postamble {
-   package MY;
+#sub MY::postamble {
+#   package MY;
+#
+#   '
+#
+#WEBDIR = /home/gossamer/public_html/netizen/code
+#WEB_FILELIST = $(WEBDIR)/file-list
+#
+#webdist: dist
+#	@$(MKPATH) $(WEBDIR)/$(DISTNAME)/
+#	cp $(DISTVNAME).tar.$(SUFFIX) $(WEBDIR)/$(DISTNAME)/
+#	cp README $(WEBDIR)/$(DISTNAME)/$(DISTVNAME).README
+#
+#'
+#}
 
-   '
 
-WEBDIR = /home/gossamer/websrc/docs/code
-WEB_FILELIST = $(WEBDIR)/file-list
-
-webdist: dist
-	@$(MKPATH) $(WEBDIR)/$(DISTNAME)/
-	cp $(DISTVNAME).tar.$(SUFFIX) $(WEBDIR)/$(DISTNAME)/
-	cp README $(WEBDIR)/$(DISTNAME)/$(DISTVNAME).README
-
-'
-}
 

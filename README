@@ -1,37 +1,13 @@
-
 Net::ICQ
+========
 
 This is a really unfinished module for communicating with an ICQ
 server.
 
-*** YOU CAN'T USE IT YET.  IT'S NOT FINISHED.
-    BUT IT'S GETTING THERE!!
-
-    It's here because others are helping me create it and this
-    is the easient way to share code :)
-
-
 CHANGES
 =======
 
-Most recent changes are:
-0.07 -> 0.08
-   - dword_2_hex renamed dword_to_chars to match other names.
-   - utility function decimal_to_hex added.
-   - Example client now uses config files, sorta.
-   - Added new 'Birthday' status.
-   - New skeleton function receive_end_contactlist_status(),
-     receive_not_logged_in().
-   - Added new server packet 0xF000, NOT_LOGGED_IN.
-   - Altered logon sequence according to what Graham Roff
-     <graham@modemcable149.173.mmtl.videotron.net> posted to the list
-     about it.
-   - Renamed some packet types (and associated functions, etc.) to be 
-     more clear:  
-        LOGIN_1 to REQUEST_OFFLINE_MESSAGES, 
-        REPLY_X1 to END_CONTACTLIST_STATUS, 
-        REPLY_X2 to END_OFFLINE_MESSAGES, 
-        CMD_X1 to ACK_OFFLINE_MESSAGES, 
+See the Changes file.
 
 
 INSTALLING
@@ -49,39 +25,41 @@ the library by running these commands:
 CONTACTS
 ========
 
-   To contact me directly, <URL:mailto:gossamer@tertius.net.au> is
-   best.
-   
-   The icq-dev mailing list is for all the ICQ clones being developed,
-   see http://www.student.nada.kth.se/~d95-mih/icq/#icq-devel for
-   details.
+I can be contacted at <luke@petre.net>.
 
-   There is an icq-perl mailing list specifically for people with an
-   interest in Net::ICQ.  Anybody interested in helping with
-   development or testing is encouraged to subscribe, as are people
-   who just want to keep track of what's going on with Net::ICQ.  It's
-   a standard majordomo list if you grok them, or trot along to
-   http://www.tertius.net.au/lists/icq-perl/ to subscribe with a nifty
-   web interface.
+The project is hosted at SourceForge, at http://neticq.sourceforge.net .
+
+
+MAILING LISTS
+=============
+
+The icq-dev mailing list is for all the ICQ clones being developed,
+see http://www.student.nada.kth.se/~d95-mih/icq/#icq-devel for
+details.
+
+Also, there is a Net-ICQ developers list hosted by SourceForge.  Go to
+the project homepage listed above, and follow the links to the mailing
+list area.
 
 
 CREDITS
 =======
-   (Names in [...] are those used in the Changes file)
+(Names in [...] are those used in the Changes file)
 
-   [Jah] - Jah Raphael <jah@dotshop.com>
+(none yet)
 
 
 DISCLAIMERS
 ===========
-   I am in no way affiliated with Mirabilis!
+I am in no way affiliated with Mirabilis!
 
-   This program was made without any help from Mirabilis or their
-   consent.  Not reverse engineering or decompilation of any Mirabilis
-   code took place to make this program.
-  
+This program was made without any help from Mirabilis or their
+consent.  No reverse engineering or decompilation of any Mirabilis
+code took place to make this program.
 
-   Copyright (c) 1998 Bek Oberin. All rights reserved. 
-   This program is free software; you can redistribute it and/or
-   modify it under the same terms as Perl itself.
+
+Copyright (c) 2000 Luke Petre . All rights reserved.
+Inspired by Net-ICQ 0.08a and previous, copyright Bek Oberlin.
+This program is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
 

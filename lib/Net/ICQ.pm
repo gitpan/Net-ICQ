@@ -1,857 +1,1645 @@
 package Net::ICQ;
-#
-# Perl interface to the ICQ server.
-#
-# This program was made without any help from Mirabilis or their
-# consent.  No reverse engineering or decompilation of any Mirabilis
-# code took place to make this program.
-#
-# Copyright (c) 1998 Bek Oberin.  All rights reserved. 
-# This program is free software; you can redistribute it and/or modify
-# it under the same terms as Perl itself.
-#
-# Last updated by gossamer on Sun Nov 22 11:30:40 EST 1998
-#
+
 
 use strict;
-use vars qw($VERSION @ISA @EXPORT @EXPORT_OK);
-
-require Exporter;
-
-use Data::Dumper;
-use IO::Socket::INET;
+use vars qw(
+  $VERSION
+  @_table
+  %cmd_codes %srv_codes
+  %_parsers %_msg_parsers %_meta_parsers
+  %_builders %_msg_builders
+);
+use Carp;
+use IO::Socket;
 use IO::Select;
-use Sys::Hostname;
-use Symbol;
-use Fcntl;
+use Time::Local;
+use Math::BigInt;
 
-use Carp;                     # Regular Carp
-#use Carp qw(verbose);         # This one's for debugging - uses line numbers
+$VERSION = '0.12';
 
-@ISA = qw(Exporter);
-@EXPORT = qw();
-@EXPORT_OK = qw();
 
-$VERSION = "0.08";
+# "encryption" table (grumble grumble...)
+@_table = (
+ 0x59, 0x60, 0x37, 0x6B, 0x65, 0x62, 0x46, 0x48,
+ 0x53, 0x61, 0x4C, 0x59, 0x60, 0x57, 0x5B, 0x3D,
+ 0x5E, 0x34, 0x6D, 0x36, 0x50, 0x3F, 0x6F, 0x67,
+ 0x53, 0x61, 0x4C, 0x59, 0x40, 0x47, 0x63, 0x39,
+ 0x50, 0x5F, 0x5F, 0x3F, 0x6F, 0x47, 0x43, 0x69,
+ 0x48, 0x33, 0x31, 0x64, 0x35, 0x5A, 0x4A, 0x42,
+ 0x56, 0x40, 0x67, 0x53, 0x41, 0x07, 0x6C, 0x49,
+ 0x58, 0x3B, 0x4D, 0x46, 0x68, 0x43, 0x69, 0x48,
+ 0x33, 0x31, 0x44, 0x65, 0x62, 0x46, 0x48, 0x53,
+ 0x41, 0x07, 0x6C, 0x69, 0x48, 0x33, 0x51, 0x54,
+ 0x5D, 0x4E, 0x6C, 0x49, 0x38, 0x4B, 0x55, 0x4A,
+ 0x62, 0x46, 0x48, 0x33, 0x51, 0x34, 0x6D, 0x36,
+ 0x50, 0x5F, 0x5F, 0x5F, 0x3F, 0x6F, 0x47, 0x63,
+ 0x59, 0x40, 0x67, 0x33, 0x31, 0x64, 0x35, 0x5A,
+ 0x6A, 0x52, 0x6E, 0x3C, 0x51, 0x34, 0x6D, 0x36,
+ 0x50, 0x5F, 0x5F, 0x3F, 0x4F, 0x37, 0x4B, 0x35,
+ 0x5A, 0x4A, 0x62, 0x66, 0x58, 0x3B, 0x4D, 0x66,
+ 0x58, 0x5B, 0x5D, 0x4E, 0x6C, 0x49, 0x58, 0x3B,
+ 0x4D, 0x66, 0x58, 0x3B, 0x4D, 0x46, 0x48, 0x53,
+ 0x61, 0x4C, 0x59, 0x40, 0x67, 0x33, 0x31, 0x64,
+ 0x55, 0x6A, 0x32, 0x3E, 0x44, 0x45, 0x52, 0x6E,
+ 0x3C, 0x31, 0x64, 0x55, 0x6A, 0x52, 0x4E, 0x6C,
+ 0x69, 0x48, 0x53, 0x61, 0x4C, 0x39, 0x30, 0x6F,
+ 0x47, 0x63, 0x59, 0x60, 0x57, 0x5B, 0x3D, 0x3E,
+ 0x64, 0x35, 0x3A, 0x3A, 0x5A, 0x6A, 0x52, 0x4E,
+ 0x6C, 0x69, 0x48, 0x53, 0x61, 0x6C, 0x49, 0x58,
+ 0x3B, 0x4D, 0x46, 0x68, 0x63, 0x39, 0x50, 0x5F,
+ 0x5F, 0x3F, 0x6F, 0x67, 0x53, 0x41, 0x25, 0x41,
+ 0x3C, 0x51, 0x54, 0x3D, 0x5E, 0x54, 0x5D, 0x4E,
+ 0x4C, 0x39, 0x50, 0x5F, 0x5F, 0x5F, 0x3F, 0x6F,
+ 0x47, 0x43, 0x69, 0x48, 0x33, 0x51, 0x54, 0x5D,
+ 0x6E, 0x3C, 0x31, 0x64, 0x35, 0x5A, 0x00, 0x00,
+);
+
+
+%cmd_codes = (
+  CMD_ACK                 => 10,
+  CMD_SEND_MESSAGE        => 270,
+  CMD_LOGIN               => 1000,
+  CMD_REG_NEW_USER        => 1020,
+  CMD_CONTACT_LIST        => 1030,
+  CMD_SEARCH_UIN          => 1050,
+  CMD_SEARCH_USER         => 1060,
+  CMD_KEEP_ALIVE          => 1070,
+  CMD_SEND_TEXT_CODE      => 1080,
+  CMD_ACK_MESSAGES        => 1090,
+  CMD_LOGIN_1             => 1100,
+  CMD_MSG_TO_NEW_USER     => 1110,
+  CMD_INFO_REQ            => 1120,
+  CMD_EXT_INFO_REQ        => 1130,
+  CMD_CHANGE_PW           => 1180,
+  CMD_NEW_USER_INFO       => 1190,
+  CMD_UPDATE_EXT_INFO     => 1200,
+  CMD_QUERY_SERVERS       => 1210,
+  CMD_QUERY_ADDONS        => 1220,
+  CMD_STATUS_CHANGE       => 1240,
+  CMD_NEW_USER_1          => 1260,
+  CMD_UPDATE_INFO         => 1290,
+  CMD_AUTH_UPDATE         => 1300,
+  CMD_KEEP_ALIVE2         => 1310,
+  CMD_LOGIN_2             => 1320,
+  CMD_ADD_TO_LIST         => 1340,
+  CMD_RAND_SET            => 1380,
+  CMD_RAND_SEARCH         => 1390,
+  CMD_META_USER           => 1610,
+  CMD_INVIS_LIST          => 1700,
+  CMD_VIS_LIST            => 1710,
+  CMD_UPDATE_LIST         => 1720
+);
+
+
+%srv_codes = (
+  SRV_ACK                 => 10,
+  SRV_GO_AWAY             => 40,
+  SRV_NEW_UIN             => 70,
+  SRV_LOGIN_REPLY         => 90,
+  SRV_BAD_PASS            => 100,
+  SRV_USER_ONLINE         => 110,
+  SRV_USER_OFFLINE        => 120,
+  SRV_QUERY               => 130,
+  SRV_USER_FOUND          => 140,
+  SRV_END_OF_SEARCH       => 160,
+  SRV_NEW_USER            => 180,
+  SRV_UPDATE_EXT          => 200,
+  SRV_RECV_MESSAGE        => 220,
+  SRV_X2                  => 230,
+  SRV_NOT_CONNECTED       => 240,
+  SRV_TRY_AGAIN           => 250,
+  SRV_SYS_DELIVERED_MESS  => 260,
+  SRV_INFO_REPLY          => 280,
+  SRV_EXT_INFO_REPLY      => 290,
+  SRV_STATUS_UPDATE       => 420,
+  SRV_SYSTEM_MESSAGE      => 450,
+  SRV_UPDATE_SUCCESS      => 480,
+  SRV_UPDATE_FAIL         => 490,
+  SRV_AUTH_UPDATE         => 500,
+  SRV_MULTI_PACKET        => 530,
+  SRV_X1                  => 540,
+  SRV_RAND_USER           => 590,
+  SRV_META_USER           => 990
+);
+
 
 =head1 NAME
 
-Net::ICQ - Communicate with a ICQ server
+Net::ICQ - Perl interface to an ICQ server
 
 =head1 SYNOPSIS
 
-   use Net::ICQ;
-     
-   $ICQ = Net::ICQ->new();
-   $ICQ->signon();
+  use Net::ICQ;
+
+  $icq = Net::ICQ->new();
+
+  $icq->add_handler('SRV_NAME', \&sub_name);
+  $icq->send_event('CMD_NAME', $params);
+
+  while (!quit) {
+    $icq->do_one_loop();
+  }
+
+  $icq->disconnect();
 
 =head1 DESCRIPTION
 
-C<Net::ICQ> is a class implementing a simple ICQ client in
-Perl.
+C<Net::ICQ> is a class implementing an ICQ client interface
+in Perl.
 
 =cut
 
-###################################################################
-# Some constants                                                  #
-###################################################################
-
-# ICQ Ver 2.0
-my $ICQ_Version_Major = 2;
-my $ICQ_Version_Minor = 0;
-
-my $Default_ICQ_Port = 4000;
-my $Default_ICQ_Host = "icq1.mirabilis.com";
-
-my $DEBUG = 1;
-
-# Status types
-# TODO there are new status options that I don't have
-my %user_status = (
-   "ONLINE" => 0x00000000,
-   "AWAY" => 0x01000000,
-   "DND" => 0x11000000,
-   "INVISIBLE" => 0x00010000,
-   "BIRTHDAY" => 0x00080000,
-   );
-my %user_status_bynumber = reverse %user_status;
-
-# Packet types
-my %server_commands_bynumber = (
-   0x00F0 => "GO_AWAY",
-   0x0a00 => "ACK",	
-   0x1801 => "INFO_REPLY",
-   0x1C02 => "END_CONTACTLIST_STATUS",
-   0x2201 => "EXT_INFO_REPLY",
-   0x2800 => "SILENT_TOO_LONG",
-   0x4600 => "NEW_USER_UIN",
-   0x5a00 => "LOGIN_REPLY",
-   0x6400 => "BAD_LOGIN",
-   0x6e00 => "USER_ONLINE",
-   0x7800 => "USER_OFFLINE",
-   0x8200 => "QUERY_REPLY",
-   0x8C00 => "USER_FOUND",
-   0xA000 => "END_OF_SEARCH",
-   0xA401 => "STATUS_UPDATE",
-   0xB400 => "NEW_USER_REPLY",
-   0xC201 => "SYSTEM_MESSAGE",
-   0xC800 => "UPDATE_EXT_REPLY",
-   0xDC00 => "RECEIVE_MESSAGE",
-   0xE001 => "UPDATE_REPLY",
-   0xE600 => "END_OFFLINE_MESSAGES",
-   0xF000 => "NOT_LOGGED_IN",
-   0xFA00 => "TRY_AGAIN",
-   );
-my %server_commands = reverse %server_commands_bynumber;
-
-my %client_commands_bynumber = (
-   0x0604 => "CONTACT_LIST",
-   0x0A00 => "ACK",
-   0x0A05 => "UPDATE_INFO",
-   0x0E01 => "SEND_MESSAGE",
-   0x1A04 => "SEARCH_UIN",
-   0x2404 => "SEARCH_USER",
-   0x2805 => "LOGIN_2",
-   0x2E04 => "KEEP_ALIVE",
-   0x3804 => "SEND_TEXT_CODE",
-   0x3C05 => "ADD_TO_LIST",
-   0x4204 => "ACK_OFFLINE_MESSAGES",
-   0x4C04 => "REQUEST_OFFLINE_MESSAGES",
-   0x5604 => "MSG_TO_NEW_USER",
-   0x5604 => "REQ_ADD_TO_LIST",
-   0x6004 => "INFO_REQ",
-   0x6A04 => "EXT_INFO_REQ",
-   0x9C04 => "CHANGE_PASSWORD",
-   0xA604 => "NEW_USER_INFO",
-   0xB004 => "UPDATE_EXT_INFO",
-   0xBA04 => "QUERY_SERVERS",
-   0xC404 => "QUERY_ADDONS",
-   0xD804 => "STATUS_CHANGE",
-   0xE803 => "LOGIN",
-   0xEC04 => "NEW_USER_1",
-   0xFC03 => "NEW_USER_REG",
-   );
-my %client_commands = reverse %client_commands_bynumber;
-
-
-###################################################################
-# Functions under here are member functions                       #
-###################################################################
-
 =head1 CONSTRUCTOR
 
-=item new ( [ USERNAME, PASSWORD [, STATUS [, HOST [, PORT ] ] ] ])
+=over 4
 
-Opens a connection to the ICQ server.  Note this does not automatially
-log you into the server, you'll need to call login().
+=item *
 
-C<USERNAME> defaults, in order, to the environment variables
-C<ICQUSER>, C<USER> then C<LOGNAME>.
+new (uin, password [, server [, port]])
 
-C<PASSWORD> defaults to the contents of the file C<$HOME/.icqpw>.
+Opens a connection to the ICQ server.  The UIN and
+password to use are specified as the first two parameters.
+Server and port are optional, and default to
+'icq.mirabilis.com' and '4000', respectively.
 
-C<STATUS> defaults to C<ONLINE>.
+Also, environment variables will be checked as follows:
 
-C<HOST> and C<PORT> refer to the remote host to which a ICQ connection
-is required.  Leave them blank unless you want to connect to a server
-other than Mirabilis.
+  uin      - ICQ_UIN
+  password - ICQ_PASS
+  server   - ICQ_SERVER
+  port     - ICQ_PORT
 
-The constructor returns the open socket, or C<undef> if an error has
-been encountered.
+Constructor parameters have the highest priority, then environment
+variables.  The built-in defaults (for server and port only) have
+the lowest priority.
+
+If either a UIN or password is not provided either directly or
+through environment variables, new() will croak with an appropriate
+error message.
+
+=back
 
 =cut
 
 sub new {
-   my $prototype = shift;
-   my $uin = shift;
-   my $password = shift;
-   my $status = shift;
-   my $host = shift;
-   my $port = shift;
+  my ($class, $uin, $password, $server, $port) = @_;
+  my ($params);
 
-   my $class = ref($prototype) || $prototype;
-   my $self  = {};
+  $uin or $uin = $ENV{ICQ_UIN} or croak('No UIN!');
+  $password or $password = $ENV{ICQ_PASS} or croak('No password!');
+  $server or $server = $ENV{ICQ_SERVER} or $server = 'icq.mirabilis.com';
+  $port or $port = $ENV{ICQ_PORT} or $port = 4000;
 
-   $self->{"uin"} = $uin || $ENV{"ICQUSER"} || 
-      croak "Unknown ICQ UIN - please specify";
-   $self->{"password"} = $password ||
-      croak "Unknown ICQ password - please specify";
-   # TODO this should find the password in the .icqpw file
-   $self->{"host"} = $host || $ENV{"ICQHOST"} || $Default_ICQ_Host;
-   $self->{"port"} = $port || $ENV{"ICQPORT"} || $Default_ICQ_Port;
-   chomp($self->{"tty"} = `tty`);
-   $self->{"status"} = $status || $user_status{"ONLINE"};
-   
-   $self->{"sequence_number"} = 0x0100;
+  my $self = {
+    _uin => $uin,
+    _password => $password,
+    _server => $server,
+    _port => $port,
+    _session_id => int(rand(0xFFFFFFFF)),
+    _seq_num_1 => int(rand(0xFFFF)),
+    _seq_num_2 => 0x1,
+    _socket => undef,
+    _select => undef,
+    _events_incoming => [], # array
+    _events_outgoing => [],
+    _acks_incoming   => [], # acks are processed immediately, so they get their own array
+    _acks_outgoing   => [],
+    _handlers => {},
+    _last_keepalive => undef,
+    _connected => 1,
+    _debug => 0
+  };
 
-   $DEBUG && warn "CONSTRUCTOR:  Host: " . $self->{"host"} . ", Port: " . $self->{"port"} . "\n";
-   $DEBUG && warn "CONSTRUCTOR:  UIN: " . $self->{"uin"} . ", Password: " . $self->{"password"} . "\n";
+  $self->{_socket} = IO::Socket::INET->new(
+    Proto => 'udp',
+    PeerAddr => $self->{_server},
+    PeerPort => $self->{_port},
+  )
+    or croak("socket error: $@");
 
-   # open the connection
-   $self->{"socket"} = new IO::Socket::INET (
-      PeerAddr => $self->{"host"},
-      PeerPort => $self->{"port"},
-      Proto => "udp",
-      Type => SOCK_DGRAM,
-   ) || croak "new: connect socket: $!";
+  $self->{_select} = IO::Select->new($self->{_socket});
+  $self->{_last_keepalive} = time();
 
-   $self->{"select"} = new IO::Select [$self->{"socket"}];
+  bless($self, $class);
 
-   bless($self, $class);
-   return $self;
+  # send a login event
+  $params = {
+    password => $password,
+    client_ip => $self->{_socket}->sockaddr(),
+    # FIX: deal with client_port correctly when TCP communication is implemented
+    client_port => 0
+  };
+  $self->send_event('CMD_LOGIN', $params, 1);
+
+  return $self;
 }
 
-#
-# destructor
-#
-sub DESTROY {
-   my $self = shift;
 
-   shutdown($self->{"socket"}, 2);
-   close($self->{"socket"});
+=head1 METHODS
 
-   return 1;
-}
+All of the following methods are instance methods.  That is,
+call them on a Net::ICQ object (for example, $icq->do_one_loop).
 
+=over 4
 
-=head1 OUTGOING - HIGH LEVEL FUNCTIONS
+=item *
 
-These are correspond with things you might want to do, rather
-than the actual packets in the protocol.
+do_one_loop
 
-=item login ( UINs );
+Unless you call the start() method (see below), you must
+continuously call do_one_loop whenever your Net::ICQ object
+is connected to the server.  It uses select() to wait for
+data from the server and other ICQ clients, so it won't use
+CPU power even if you call it in a tight loop.
 
-Logs you into the ICQ server, set contact list to UINs (reference to a
-hash keyed on number, values are names, requests saved messages) and
-other standard login-type things.
-
-=cut
-sub login {
-   my $self = shift;
-   my $uins = shift;
-
-   my ($data_pack);
-
-   $self->{"contactlist"} = $uins;
-
-   # construct the login packet data
-   $data_pack = pack("Nna*N2nNcN3",
-		     $self->{"socket"}->sockport,	       # PORT
-		     (length($self->{"password"}) + 1)<<8, # PASSWD LEN (clobbers long passwds?)
-		     $self->{"password"} . "\0",	          # PASSWORD
-		     $self->{"socket"}->sockaddr,	       # USER_IP
-		     defined($user_status_bynumber{$self->{"status"}}) 
-		          ? $self->{"status"} : $user_status{"ONLINE"}, 
-                                                 # STATUS 
-		     ++$self->{"login_seq_num"},	          # LOGIN_SEQ_NUM
-		     0x78000000, 			                   # X1
-		     0x04,				                      # X2
-		     0x02000000,			                   # X3
-		     0x00000000,			                   # X4
-		     0x08007800);			                   # X5
-		     
-   $self->send_message($self->construct_message("LOGIN", $data_pack));
-
-   return 1;
-}
-
-=pod
-=item search ( TEXT );
-
-Search for a user.  You can search by UIN, email, nickname or
-realname.
+This method does one processing loop, which involves looking
+for incoming data from the network, calling registered event
+handlers, sending acknowledgements for received packets,
+transmitting outgoing data over the network, and sending
+keepalives to the server to tell it that we are still online.
+If it is not called often enough, you will not be notified of
+incoming events in a timely fashion, or the server might even
+think you have disconnected and start to ignore you.  As
+mentioned above, you can't call this function too quickly, so
+don't worry about that and call it as fast as you can.
 
 =cut
 
-sub search {
-   my $self = shift;
-   my $searchtext = shift;
+sub do_one_loop {
+  my ($self) = @_;
 
-   if ($searchtext =~ /^\d+$/) {
-      # all numbers, it's a UIN
-      return $self->search_uin($searchtext);
-
-   } elsif ($searchtext =~ /@/) {
-      # it's an email address
-      return $self->search_user('','','',$searchtext);
-
-   } elsif ($searchtext =~ /^(\w+)\s+(\w+)/) {
-      # alpha separated by space is prob'ly Firstname Lastname
-      my $first_name = $1;
-      my $last_name = $2;
-      return $self->search_user('',$first_name, $last_name, '');
-
-   } elsif ($searchtext =~ /^(\w+)\s+(\w+)/) {
-      # alpha separated by comma is prob'ly Lastname, Firstname
-      my $last_name = $1;
-      my $first_name = $2;
-      return $self->search_user('',$first_name, $last_name, '');
-
-   } else {
-      # assume it's a nickname we're searching
-      return $self->search_user($searchtext,'','','');
-   }
-
+  $self->_do_incoming();
+  $self->_do_acks();
+  $self->_do_multis();
+  $self->_do_keepalives();
+  $self->_do_timeouts();
+  $self->_do_handlers();
+  $self->_do_outgoing();
 }
 
-=head1 INCOMING - HIGH LEVEL FUNCTIONS
 
-Copes with responses from the ICQ server.
+=item *
 
-=item incoming_packet_waiting ( TIMEOUT );
+start
 
-Check if there's something from the server waiting to be processed.
+If you're writing a fairly simple application that doesn't need to
+interface with other event-loop-based libraries, you can just call
+start instead of repeatedly calling do_one_loop.  Essentially, the
+start method does this: S<C<while (connected) {do_one_loop}>>
 
-To have it block waiting for input, call it with no argument.
-Otherwise the argument is the number of seconds before it times out.
+If you have called the start method, it will return after
+disconnect is called.
 
 =cut
 
-sub incoming_packet_waiting {
-   my $self = shift;
-   my $timeout = shift;
+sub start {
+  my ($self) = @_;
 
-   return $self->{"select"}->can_read($timeout);
+  while ($self->{_connected}) {
+    $self->do_one_loop();
+  }
 }
 
-=pod
-=item incoming_process_packet ( );
 
-Do stuff.  
+=item *
+
+add_handler(command_number, handler_ref)
+
+Sets the handler function for a specific ICQ server event.
+command_number specifies the event to handle.  You may use
+either the numeric code or the corresponding string code.
+See the SERVER EVENTS section below for the numeric and
+string codes for all the events, along with descriptions
+of each event's function and purpose.
+handler_ref is a code ref for the sub that you want to handle
+the event.  See the HANDLERS section for how a handler works
+and what it needs to do.
 
 =cut
 
-sub incoming_process_packet {
-   my $self = shift;
+sub add_handler {
+  my ($self, $command, $sub) = @_;
+  my ($command_num);
 
-   my $server;
-   my $message;
-   
-   $DEBUG && warn "INCOMING:  Reading incoming packet ...\n";
+  $command_num = exists $srv_codes{$command} ?
+    $srv_codes{$command} :
+    $command;
 
-   my $sock = $self->{"socket"};
+  print "=== add handler <", sprintf("%04X", $command_num), "> = $sub\n";
 
-   unless ($sock->recv($message, 99999)) {
-      croak "socket:  recv2:  $1";
-   }
+  $self->{_handlers}{$command_num} = $sub;
+}
 
-   my ($version_major, $version_minor, $command, $sequence_number) = 
-      unpack("CCnn", $message);  
 
-   if ($DEBUG) {
-      my $command_hex = &decimal_to_hex($command);
-      if (my $sc = $server_commands_bynumber{$command}) {
-         warn "INCOMING:  Got command " .  
-               $server_commands_bynumber{$command} . " ($command/$command_hex) sequence $sequence_number\n";
-      } else {
-         warn "INCOMING:  Got unknown command number $command/$command_hex sequence $sequence_number\n";
+=item *
+
+send_event(command_number, params)
+
+Sends an event to the server.
+command_number specifies the event to be sent.  You may use
+either the numeric code or the corresponding string code.
+See the CLIENT EVENTS section below for the numeric and
+string codes for all the events, along with descriptions
+of each event's function and purpose.
+params is a reference to a hash containing the parameters
+for the event.  See the CLIENT EVENTS section for an
+explanation of the correct parameters for each event.
+
+=cut
+
+sub send_event {
+  my ($self, $command, $params, $priority) = @_;
+
+  $command = $cmd_codes{$command}
+    if exists ($cmd_codes{$command});
+
+  $self->_queue_event(
+    {
+     params  => &{$_builders{$command}}($params),
+     command => $command
+    },
+    $priority
+  );
+}
+
+
+=item *
+
+disconnect()
+
+Disconnects the Net::ICQ object from the server.  Note that
+currently, the object becomes unusable for ICQ communication
+after disconnect is called.  In the future a connect method
+will be written which will allow the object to reconnect to
+the server, but this method does currently not exist.  (FIX!)
+
+The 'connected' field of the Net::ICQ object will be set
+to false after this method is called, and if you have
+called the start method, it will exit.
+
+=back
+
+=cut
+
+sub disconnect {
+  my ($self) = @_;
+
+  $self->send_event('CMD_SEND_TEXT_CODE', {text_code => 'B_USER_DISCONNECTED'}, 1);
+  $self->_do_outgoing();
+  $self->{_connected} = 0;
+}
+
+
+=head1 CLIENT EVENTS
+
+Client events are the messages an ICQ client, i.e. your code,
+sends to the server.  They represent things such as a logon
+request, a message to another user, or a user search request.
+They are sometimes called 'commands' because they represent
+the 'commands' that an ICQ client can execute.
+
+When you ask Net::ICQ to send an event with send_event()
+(described above), you need to provide 2 things:
+the event name, and the parameters.
+
+=head2 Event name
+
+The event name is the first parameter to send_event(),
+and it specifies which event you are sending.  You may either
+specify the string code or the numeric code.  The section
+CLIENT EVENT LIST below describes all the events and
+gives the codes for each.  For example: when sending a
+text message to a user, you may give the event name as
+either the string 'CMD_SEND_MESSAGE' or the number 270.
+
+The hash C<%Net::ICQ::cmd_codes> maps string codes to numeric
+codes.  C<keys(%Net::ICQ::cmd_codes)> will produce a list of
+all the string codes.
+
+=head2 Parameters
+
+The parameters list is the second parameter to send_event(),
+and it specifies the data for the event.  Every event has
+its own parameter list, but the general idea is the same.
+The parameters list is stored as a hashref, where the hash
+contains a key for each parameter.  Almost all the events
+utilize a regular 1-level hash where the values are plain
+scalars, but a few events do require 2-level hash.  The
+CLIENT EVENT LIST section lists the parameters for every
+client event.
+
+For example: to send a normal text message with the text
+'Hello world' to UIN 1234, the parameters would
+look like this:
+
+  {
+    'type'         => 1,
+    'text'         => 'Hello world',
+    'receiver_uin' => 1234
+  }
+
+=head2 A complete example
+
+Here is the complete code using send_event() to send the
+message 'Hello world' to UIN 1234:
+
+  $params = {
+    'type'         => 1,
+    'text'         => 'Hello world',
+    'receiver_uin' => 1234
+  };
+  $icq->send_event('CMD_SEND_MESSAGE', $params);
+
+=cut
+
+
+%_parsers = (
+  # SRV_ACK
+  10 => sub {
+    my ($event) = @_;
+    delete $event->{params};
+  },
+  # SRV_GO_AWAY
+  40 => sub {
+    my ($event) = @_;
+    delete $event->{params};
+  },
+  # SRV_NEW_UIN
+  70 => sub {
+    my ($event) = @_;
+    delete $event->{params};
+  },
+  # SRV_LOGIN_REPLY
+  90 => sub {
+    my ($event) = @_;
+    my ($parsedevent);
+
+    $parsedevent->{your_ip} = _bytes_to_int($event->{params}, 12, 4);
+    $event->{params}        = $parsedevent;
+  },
+  # SRV_BAD_PASS
+  100 => sub {
+    my ($event) = @_;
+    delete $event->{params};
+  },
+  # SRV_USER_ONLINE
+  110 => sub {
+    my ($event) = @_;
+    my ($parsedevent);
+
+    $parsedevent->{uin}     = _bytes_to_int($event->{params}, 0, 4);
+    $parsedevent->{ip}      = _bytes_to_int($event->{params}, 4, 4);
+    $parsedevent->{port}    = _bytes_to_int($event->{params}, 8, 4);
+    $parsedevent->{real_ip} = _bytes_to_int($event->{params}, 12, 4);
+    $parsedevent->{status}  = _bytes_to_int($event->{params}, 17, 4);
+    $event->{params}        = $parsedevent;
+  },
+  # SRV_USER_OFFLINE
+  120 => sub {
+    my ($event) = @_;
+    my ($parsedevent);
+
+    $parsedevent->{uin} = _bytes_to_int($event->{params}, 0, 4);
+    $event->{params}    = $parsedevent;
+  },
+  # SRV_QUERY
+  130 => sub {
+    #FIX : don't know what to do here ..
+  },
+  # SRV_USER_FOUND
+  140 => sub {
+    my ($event) = @_;
+    my ($parsedevent, $offset, $length);
+
+    $parsedevent->{uin}       = _bytes_to_int($event->{params}, 0, 4);
+    $offset = 4;
+    foreach ('nickname', 'firstname', 'lastname', 'email') {
+      $length                 = _bytes_to_int($event->{params}, $offset, 2);
+      $parsedevent->{$_}      = _bytes_to_str($event->{params}, $offset + 2, $length - 1);
+      $offset                += $length;
+    }
+    $parsedevent->{authorize} = _bytes_to_str($event->{params}, $offset, 1);
+    $event->{params}          = $parsedevent;
+  },
+  # SRV_END_OF_SEARCH
+  160 => sub {
+    my ($event) = @_;
+    my ($parsedevent);
+
+    $parsedevent->{too_many} = _bytes_to_int($event->{params}, 0, 1);
+    $event->{params}         = $parsedevent;
+  },
+  # SRV_NEW_USER
+  180 => sub {
+    #FIX : don't know what to do here ..
+  },
+  # SRV_UPDATE_EXT
+  200 => sub {
+    #FIX : don't know what to do here ..
+  },
+  # SRV_RECV_MESSAGE
+  220 => sub {
+    my ($event) = @_;
+    my ($parsedevent, @strings, @tmp);
+
+    $parsedevent->{uin}    = _bytes_to_int($event->{params}, 0, 4);
+    $parsedevent->{time}   = timelocal(0,     #sec
+      _bytes_to_int($event->{params}, 9, 1),  #min
+      _bytes_to_int($event->{params}, 8, 1),  #hour
+      _bytes_to_int($event->{params}, 7, 1),  #day
+      _bytes_to_int($event->{params}, 6, 1),  #mon
+      _bytes_to_int($event->{params}, 4, 2)   #year
+    );
+    $parsedevent->{type}   = _bytes_to_int($event->{params}, 10, 2);
+    $parsedevent->{length} = _bytes_to_int($event->{params}, 12, 2);
+
+    @strings = _bytes_to_strlist([@{$event->{params}}[14..@{$event->{params}}-1]]);
+    if      ($parsedevent->{type} == 1) {
+      $parsedevent->{text}        = $strings[0];
+    } elsif ($parsedevent->{type} == 4) {
+      $parsedevent->{description} = $strings[0];
+      $parsedevent->{url}         = $strings[1];
+    } elsif ($parsedevent->{type} == 6) {
+      $parsedevent->{nickname}    = $strings[0];
+      $parsedevent->{firstname}   = $strings[1];
+      $parsedevent->{lastname}    = $strings[2];
+      $parsedevent->{email}       = $strings[3];
+      $parsedevent->{reason}      = $strings[4];
+    } elsif ($parsedevent->{type} == 8) {
+    } elsif ($parsedevent->{type} == 12) {
+      $parsedevent->{nickname}    = $strings[0];
+      $parsedevent->{firstname}   = $strings[1];
+      $parsedevent->{lastname}    = $strings[2];
+      $parsedevent->{email}       = $strings[3];
+    } elsif ($parsedevent->{type} == 19) {
+      $parsedevent->{contacts} = {};
+      shift @strings; # remove first element - number of contacts
+      for (my $i=0; $i<@strings-1; $i+=2) {
+	$parsedevent->{contacts}{$strings[$i]} = $strings[$i+1];
       }
-   }
+    }
 
-   $message = substr($message, 6); # skip over six bytes /Jah
-   if ($command eq $server_commands{"ACK"}) {
-      # ack is special case, we ignore it for the moment
-      # TODO we should keep track of packets sent (hash, indexed
-      #      by sequence number) and tick them off when they're
-      #      ACK'd.  Then resend things if they aren't.  Fiddly.
-      $DEBUG && warn "INCOMING:  Got ACK for packet $sequence_number\n";
-   } else {
-      # common packet info
-      $self->{'icq_packet_info'} = [$version_major, $version_minor, $command, $sequence_number];
-      $DEBUG && warn "INCOMING: Sending ACK for packet $sequence_number\n";
-      $self->send_ack($sequence_number);
+    $event->{params} = $parsedevent;
+  },
+  # SRV_X2
+  230 => sub {
+    #FIX : don't know what to do here ..
+  },
+  # SRV_NOT_CONNECTED
+  240 => sub {
+    #FIX : don't know what to do here ..
+  },
+  # SRV_TRY_AGAIN
+  250 => sub {
+    #FIX : don't know what to do here ..
+  },
+  # SRV_SYS_DELIVERED_MESS
+  260 => sub {
+    my ($event) = @_;
+    my ($parsedevent, @strings, @tmp);
 
-      my $command_name = "receive_" . lc($server_commands_bynumber{$command});
-      my $coderef = $self->can($command_name);
-      if ($command_name && $coderef) {
-         # we've found a method that can process this type of packet
-         return $self->$command_name($message);
-      } else {
-         # TODO: can't cope - what do we do with this packet!!
-         warn "UNKNOWN PACKET TYPE: '$command/" . &decimal_to_hex($command) . "', sequence number '$sequence_number'";
-         $DEBUG && warn "INCOMING: Unknown packet dump: " . Dumper($message) . "\n";
-         return 0;
+    $parsedevent->{uin}    = _bytes_to_int($event->{params}, 0, 4);
+    $parsedevent->{type}   = _bytes_to_int($event->{params}, 4, 2);
+    $parsedevent->{length} = _bytes_to_int($event->{params}, 6, 2);
+    @strings = _bytes_to_strlist([@{$event->{params}}[8..@{$event->{params}}-1]]);
+    if      ($parsedevent->{type} == 1) {
+      $parsedevent->{text}        = $strings[0];
+    } elsif ($parsedevent->{type} == 4) {
+      $parsedevent->{description} = $strings[0];
+      $parsedevent->{url}         = $strings[1];
+    } elsif ($parsedevent->{type} == 6) {
+      $parsedevent->{nickname}    = $strings[0];
+      $parsedevent->{firstname}   = $strings[1];
+      $parsedevent->{lastname}    = $strings[2];
+      $parsedevent->{email}       = $strings[3];
+      $parsedevent->{reason}      = $strings[4];
+    } elsif ($parsedevent->{type} == 8) {
+    } elsif ($parsedevent->{type} == 12) {
+      $parsedevent->{nickname}    = $strings[0];
+      $parsedevent->{firstname}   = $strings[1];
+      $parsedevent->{lastname}    = $strings[2];
+      $parsedevent->{email}       = $strings[3];
+    } elsif ($parsedevent->{type} == 19) {
+      $parsedevent->{contacts} = {};
+      shift @strings; # remove first element - number of contacts
+      for (my $i=0; $i<@strings-1; $i+=2) {
+	$parsedevent->{contacts}{$strings[$i]} = $strings[$i+1];
       }
-   }
-}
-
-=head1 OUTGOING - LOW LEVEL FUNCTIONS
-
-These correspond directly with the packets available in the ICQ
-protocol.
-
-=item send_ack ( SEQUENCE_NUMBER );
-
-Send an ACK to the server, confirming we got packet SEQUENCE_NUMBER.
-
-=cut
-
-sub send_ack {
-   my $self = shift;
-   my $seq_num = shift;
-
-   $DEBUG && warn ">>ACK\n";
-   return $self->send_message($self->construct_message("ACK", "", $seq_num));
-}
-
-
-=pod
-=item send_keepalive ( );
-
-Just tells the server this connection's still alive.  Send it every 
-2 minutes or so.
-
-=cut
-
-sub send_keepalive {
-   my $self = shift;
-
-   $DEBUG && warn ">>KEEPALIVE\n";
-   return $self->send_message($self->construct_message("KEEP_ALIVE"));
-
-}
-
-=pod
-=item send_contactlist ( CONTACT_UIN_ARRAY );
-
-Tell the server who we're watching for, by UIN.
-
-=cut
-
-sub send_contactlist {
-   my $self = shift;
-   my @uins = @_;
-
-   $DEBUG && warn ">>CONTACTLIST UINs:" . join(", ",@uins) . "\n";
-   my $data = pack("n", scalar(@uins));
-   foreach (@uins) {
-      $data .= pack("N", dword_to_chars($_));
-   }
-
-   return $self->send_message($self->construct_message("CONTACT_LIST", $data));
-
-}
-
-=pod
-=item send_message ( UIN, MESSAGE );
-
-Send a message through the server to user UIN.
-
-=cut
-
-sub send_msg {
-   my $self = shift;
-   my $uin = shift;
-   my $message = shift;
-
-   $DEBUG && warn ">>SEND MSG\n";
-   return $self->send_message($self->construct_message("SEND_MESSAGE",
-      pack("NCCna*", $uin, 1, 0, length($message) + 1, $message . "\0")));
-
-}
-
-
-=pod
-=item send_url ( UIN, URL );
-
-Send a message through the server to user UIN.
-
-=cut
-
-sub send_url {
-   my $self = shift;
-   my $uin = shift;
-   my $message = shift;
-
-   $DEBUG && warn ">>SEND URL\n";
-   return $self->send_message($self->construct_message("SEND_MESSAGE",
-      pack("NCCna*", $uin, 4, 0, length($message) + 1, $message . "\0")));
-
-}
-
-=pod
-=item search_uin ( UIN );
-
-Search for a user by UIN.
-
-=cut
-sub search_uin {
-   my $self = shift;
-   my $uin = shift;
-
-   $DEBUG && warn ">>SEARCH UIN\n";
-   return $self->send_message($self->construct_message("SEARCH_UIN",
-      pack("nN", ++$self->{"search_sequence_number"}, $uin)));
-}
-
-=pod
-=item search_user ( UIN );
-
-Search for a user by UIN.
-
-=cut
-sub search_user {
-   my $self = shift;
-   my $nick_name = shift;
-   my $first_name = shift;
-   my $last_name = shift;
-   my $email = shift;
-
-   $DEBUG && warn ">>SEARCH USER\n";
-   return $self->send_message($self->construct_message("SEARCH_USER",
-      pack("nna*na*na*na*", ++$self->{"search_sequence_number"},
-            length($nick_name) + 1,
-            $nick_name . "\0",
-            length($first_name) + 1,
-            $first_name . "\0",
-            length($last_name) + 1,
-            $last_name . "\0",
-            length($email) + 1,
-            $email . "\0")));
-
-}
-
-=pod
-=item request_userinfo ( UIN );
-
-Request basic information about user UIN.
-
-=cut
-
-sub request_userinfo {
-   my $self = shift;
-   my $uin = shift;
-
-   $DEBUG && warn ">>REQUEST USERINFO\n";
-   return $self->send_message($self->construct_message("INFO_REQ",
-      pack("nN", ++$self->{"info_sequence_number"}, $uin)));
-
-}
-
-=pod
-=item request_userinfo_extended ( UIN );
-
-Request extended information about user UIN.
-
-=cut
-
-sub request_userinfo_extended {
-   my $self = shift;
-   my $uin = shift;
-
-   $DEBUG && warn ">>REQUEST USERINFO EXTENDED\n";
-   return $self->send_message($self->construct_message("EXT_INFO_REQ",
-      pack("nN", ++$self->{"info_sequence_number"}, $uin)));
-
-}
-
-=pod
-=item change_status ( STATUS );
-
-Update your ICQ status.
-
-=cut
-
-sub change_status {
-   my $self = shift;
-   my $status = shift;
-
-   $DEBUG && warn ">>CHANGE STATUS\n";
-   # check it's a real status
-   return undef unless defined($user_status{$status});
-
-   return $self->send_message($self->construct_message("CHANGE_STATUS",
-      $user_status{$status}));
-
-}
-
-=pod
-=item change_password ( PASSWD );
-
-Update your ICQ password?  What does this do?
-
-=cut
-
-sub change_password {
-   my $self = shift;
-   my $passwd = shift;
-
-   $DEBUG && warn ">>PASSWORD\n";
-   return $self->send_message($self->construct_message("CHANGE_PASSWORD",
-      pack("nna*", ++$self->{"password_change_sequence_number"},
-                   length($passwd) + 1,
-                   $passwd . "\0")));
-
-}
-
-=head1 INCOMING - LOW LEVEL FUNCTIONS
-
-Copes with responses from the ICQ server at packet level.
-
-=item receive_login_reply ( );
-
-Receive the login packet from the ICQ socket and respond to it appropriately.
-
-=cut
-sub receive_login_reply {
-   my $self = shift;
-   my $message = shift;
-
-
-   my ($user_uin, $user_ip, $login_seq) = unpack("N2n", $message); 
-      # `unknown' fields ignored
-
-   $DEBUG && warn "<<RECEIVE_LOGIN_REPLY user_uin=" . 
-                    dword_to_chars($user_uin) . 
-                    "  user_ip=$user_ip  login_seq=$login_seq\n";
-
-   # NOW we can do the rest of the login stuff
-   $self->send_message($self->construct_message("LOGIN_2", pack("C", 0)));
-   $self->send_message($self->construct_message("REQUEST_OFFLINE_MESSAGES"));
-   $self->send_contactlist(keys %{ $self->{"contactlist"} });
-   $self->change_status($self->{"status"});
-
-   return 1;
-}
-
-sub receive_end_offline_messages {
-   my $self = shift;
-   my $message = shift;
-
-   $DEBUG && warn "<<END_OFFLINE_MESSAGES\n";
-   $self->send_message($self->construct_message("ACK_OFFLINE_MESSAGES"));
-   return 1;
-}
-
-sub receive_silent_too_long {
-   my $self = shift;
-
-   $DEBUG && warn "<<SILENT TOO LONG\n";
-   # TODO or is it too late at this point?
-   $self->send_keepalive();
-   return 1;
-}
-
-sub receive_user_online {
-   my $self = shift;
-   my $message = shift;
-
-   $DEBUG && warn "<<USER ONLINE\n";
-   # TODO
-   return 0;
-}
-
-sub receive_user_offline {
-   my $self = shift;
-   my $message = shift;
-
-   $DEBUG && warn "<<USER OFFLINE\n";
-   # TODO
-
-   return 0;
-}
-
-sub receive_user_found {
-   my $self = shift;
-   my $message = shift;
-
-   $DEBUG && warn "<<USER FOUND\n";
-   # TODO
-
-   return 0;
-}
-
-sub receive_receive_message {
-   my $self = shift;
-   my $message = shift;
-
-   my ($remote_uin, $year, $month, $day, $hour, $minute, $type, $length, $text)=
-      unpack("NnCCCCnna*", $message);  
-
-   $DEBUG && warn "<<RECEIVE MESSAGE: From $remote_uin, at $hour:$minute on $day $month $year\n";
-   $DEBUG && warn "<<RECEIVE MESSAGE: Text: $text\n";
-   # TODO
-
-   return 0;
-}
-
-sub receive_end_of_search {
-   my $self = shift;
-   my $message = shift;
-
-   $DEBUG && warn "<<END OF SEARCH\n";
-   # TODO
-
-   return 0;
-}
-
-sub receive_info_reply {
-   my $self = shift;
-   my $message = shift;
-
-   $DEBUG && warn "<<INFO REPLY\n";
-   # TODO
-
-   return 0;
-}
-
-sub receive_ext_info_reply {
-   my $self = shift;
-   my $message = shift;
-
-   $DEBUG && warn "<<EXT INFO REPLY\n";
-   # TODO
-
-   return 0;
-}
-
-sub receive_status_update {
-   my $self = shift;
-   my $message = shift;
-
-   $DEBUG && warn "<<STATUS UPDATE\n";
-   # TODO
-   # NOTE:  these need to be ANDed with 0x01FF to get rid of
-   #        the high-bits in the new clients that we can't decode.
-
-   return 0;
-}
-
-
-sub receive_end_contactlist_status {
-# NB sent during login when last contactlist status update sent
-   my $self = shift;
-   my $message = shift;
-
-   $DEBUG && warn "<<END CONTACTLIST STATUS\n";
-   # TODO
-
-   return 0;
-}
-
-sub receive_not_logged_in {
-# NB sent during login when last contactlist status update sent
-   my $self = shift;
-   my $message = shift;
-
-   $DEBUG && warn "<<NOT LOGGED IN\n";
-   # TODO
-
-   return 0;
-}
-
-
-=head1 MISC FUNCTIONS
-
-These don't correspond with anything much.
-
-=item version ( );
-
-Returns version information for this module.
-
-=cut
-
-sub version {
-   return "Net::ICQ version $VERSION";
-}
-
-
-###################################################################
-# Functions under here are helper functions                       #
-###################################################################
-
-sub send_message {
-   my $self = shift;
-   my $message = shift;
-
-   if (!defined(syswrite($self->{"socket"}, $message, length($message)))) {
-      carp "syswrite: $!";
-      return 0;
-   }
-
-   return 1;
-   
-}
-
-sub construct_message {
-   my $self = shift;
-   my $command = shift;
-   my $data = shift || '';  # Assume data is already packed or whatever
-   my $seq_num = @_ ? shift : ++$self->{"sequence_number"}; # fixed /Jah - seqs can be 0
-
-   $DEBUG && warn "construct_message:  command '$command', seq_num '$seq_num'\n";
-
-   my $message = 
-         pack("CCnnN", $ICQ_Version_Major, 
-                       $ICQ_Version_Minor,
-                       $client_commands{$command},
-                       $seq_num,
-  	               dword_to_chars($self->{"uin"}))
-         . $data;
-
-  return $message;
-}
-
-=pod
-
-=item dword_to_chars ( DWORD )
-
-Returns the passed DWORD converted to Intel endian character sequence.
-
-=cut
-
-sub dword_to_chars
-{
-    my $num = shift;
-    my @buf;
-    my $buf;
-
-    $buf[0] = ($num>>24) & 0x000000FF;
-    $buf[1] = ($num>>16) & 0x000000FF;
-    $buf[2] = ($num>>8) & 0x000000FF;
-    $buf[3] = ($num) & 0x000000FF;
-
-    $buf  = $buf[3];
-    $buf <<= 8;
-    $buf |= $buf[2];
-    $buf <<= 8;
-    $buf |= $buf[1];
-    $buf <<= 8;
-    $buf |= $buf[0];
-
-    return($buf);
-}
-
-=pod
-
-=item decimal_to_hex ( NUMBER )
-
-Returns the passed NUMBER in hex representation as a string.
-
-=cut
-
-sub decimal_to_hex {
-   return uc(sprintf("%#04x", $_[0]));
-}
-
-
-
-=pod
-
-=head1 AUTHOR
-
-Bek Oberin <gossamer@tertius.net.au>
-
-=head1 COPYRIGHT
-
-Copyright (c) 1998 Bek Oberin.  All rights reserved.
-
-This program is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself.
-
-=cut
-
+    }
+
+    $event->{params} = $parsedevent;
+  },
+  # SRV_INFO_REPLY
+  280 => sub {
+    #FIX : don't know what to do here ..
+  },
+  # SRV_EXT_INFO_REPLY
+  290 => sub {
+    #FIX : don't know what to do here ..
+  },
+  # SRV_STATUS_UPDATE
+  420 => sub {
+    # RTG 8/26/2000
+    my ($event) = @_;
+    my $parsedevent;
+    $parsedevent->{uin}    = _bytes_to_int($event->{params}, 0, 4);
+    $parsedevent->{status} = _bytes_to_int($event->{params}, 4, 4);
+    $event->{params} = $parsedevent;
+  },
+  # SRV_SYSTEM_MESSAGE
+  450 => sub {
+    #FIX : don't know what to do here ..
+  },
+  # SRV_UPDATE_SUCCESS
+  480 => sub {
+    #FIX : don't know what to do here ..
+  },
+  # SRV_UPDATE_FAIL
+  490 => sub {
+    #FIX : don't know what to do here ..
+  },
+  # SRV_AUTH_UPDATE
+  500 => sub {
+    #FIX : don't know what to do here ..
+  },
+  # SRV_X1
+  540 => sub {
+    #FIX : don't know what to do here ..
+  },
+  # SRV_RAND_USER
+  590 => sub {
+    #FIX : don't know what to do here ..
+  },
+  # SRV_META_USER
+  990 => sub {
+    my ($event) = @_;
+    my ($parsedevent, $params);
+
+    $parsedevent->{subcmd}  = _bytes_to_int($event->{params}, 0, 2);
+    $parsedevent->{success} = (_bytes_to_int($event->{params}, 2, 1) == 10);
+    @$params                = @{$event->{params}}[3..@{$event->{params}}-1];
+    $parsedevent->{body}    = &{$_meta_parsers{$parsedevent->{subcmd}}}($params);
+    $event->{params}        = $parsedevent;
+  }
+);
+
+%_meta_parsers = (
+  200    => sub {
+    my ($params) = @_;
+    my ($ret, $offset, $length);
+
+    $ret->{uin}       = _bytes_to_int($params, 0, 4);
+    $offset = 4;
+    foreach ('nickname', 'firstname', 'lastname',
+	     'primary_email', 'secondary_email', 'old_email',
+	     'city', 'state', 'phone', 'fax',
+	     'street', 'cellular') {
+      $length         = _bytes_to_int($params, $offset, 2);
+      $ret->{$_}      = _bytes_to_str($params, $offset + 2, $length - 1);
+      $offset        += $length;
+    }
+    $ret->{zipcode}   = _bytes_to_str($params, $offset, 4);
+    $ret->{country}   = _bytes_to_str($params, $offset+4, 2);
+    $ret->{authorize} = _bytes_to_str($params, $offset+6, 1);
+    $ret->{webaware}  = _bytes_to_str($params, $offset+7, 1);
+    $ret->{hideip}    = _bytes_to_str($params, $offset+8, 1);
+
+    return $ret;
+  },
+  230    => sub {
+    my ($params) = @_;
+    return _bytes_to_str($params, 2, _byte_to_int($params, 0, 2) - 1);
+  },
+  410    => sub {
+    my ($params) = @_;
+    my ($ret, $offset, $length);
+
+    $ret->{uin}       = _bytes_to_int($params, 0, 4);
+    $offset = 4;
+    foreach ('nickname', 'firstname', 'lastname', 'email') {
+      $length         = _bytes_to_int($params, $offset, 2);
+      $ret->{$_}      = _bytes_to_str($params, $offset + 2, $length - 1);
+      $offset        += $length;
+    }
+    $ret->{authorize} = _bytes_to_str($params, $offset, 1);
+
+    return $ret;
+  }
+);
+
+
+%_builders = (
+  #CMD_ACK
+  10 => sub {
+  },
+  #CMD_SEND_MESSAGE
+  270 => sub {
+    my ($params) = @_;
+    my ($ret, $body2);
+
+    $ret = [];
+    push @$ret, _int_to_bytes(4, $params->{receiver_uin});
+    push @$ret, _int_to_bytes(2, $params->{type});
+
+    $body2 = &{$_msg_builders{$params->{type}}}($params);
+    push @$ret, _int_to_bytes(2, @$body2+1);
+    push @$ret, @$body2;
+    push @$ret, (0x0);
+    return $ret;
+  },
+  #CMD_LOGIN
+  1000 => sub {
+    my ($params) = @_;
+    return [
+      _int_to_bytes(4, time()),
+      _int_to_bytes(4, $params->{client_port}),
+      _int_to_bytes(2, length($params->{password})+1),
+      _str_to_bytes($params->{password}, 1),
+      _int_to_bytes(4, 0xD5),
+      _str_to_bytes($params->{client_ip}),
+      _int_to_bytes(1, 4),
+      _int_to_bytes(4, 0x200),
+      _int_to_bytes(2, 6),
+      _int_to_bytes(2, 0),
+      _int_to_bytes(4, 0),
+      _int_to_bytes(4, 0x013F0002),
+      _int_to_bytes(4, 0x50),
+      _int_to_bytes(4, 3),
+      _int_to_bytes(4, 0)
+    ];
+  },
+  #CMD_REG_NEW_USER
+  1020 => sub {
+    my ($params) = @_;
+    return [
+      _int_to_bytes(2, length($params->{password})+1),
+      _str_to_bytes($params->{password}, 1),
+      _int_to_bytes(4, 0xA0),
+      _int_to_bytes(4, 0x2461),
+      _int_to_bytes(4, 0xA00000),
+      _int_to_bytes(4, 0x0)
+    ];
+  },
+  #CMD_CONTACT_LIST
+  1030 => sub {
+    my ($params) = @_;
+    my ($ret, $num);
+
+    $num = $params->{num_contacts};
+    croak ("120 contact limit, send more than one packet")
+      if ($num > 120);
+
+    $ret = [];
+    push @$ret, _int_to_bytes(1, $num);
+    for (my $i = 0; $i < $num; $i++){
+      push @$ret, _int_to_bytes(4, $params->{uins}[$i]);
+    }
+    return $ret;
+  },
+  #CMD_SEARCH_UIN
+  1050 => sub {
+    my ($params) = @_;
+    return [
+      _int_to_bytes(2, $params->{search_seq}),
+      _int_to_bytes(4, $params->{search_uin})
+    ];
+  },
+  #CMD_SEARCH_USER
+  1060 => sub {
+    my ($params) = @_;
+    return [
+      _int_to_bytes(2, length($params->{nick})+1),
+      _str_to_bytes($params->{nick}, 1),
+      _int_to_bytes(2, length($params->{first})+1),
+      _str_to_bytes($params->{first}, 1),
+      _int_to_bytes(2, length($params->{last})+1),
+      _str_to_bytes($params->{last}, 1),
+      _int_to_bytes(2, length($params->{email})+1),
+      _str_to_bytes($params->{email}, 1),
+    ];
+  },
+  #CMD_KEEP_ALIVE
+  1070 => sub {
+    return [_int_to_bytes(4, int(rand(0xFFFFFFFF)))];
+  },
+  #CMD_SEND_TEXT_CODE
+  1080 => sub {
+    my ($params) = @_;
+    return [
+      _int_to_bytes(2, length($params->{text_code})+1),
+      _str_to_bytes($params->{text_code}, 1),
+      _int_to_bytes(2, 0x05)
+    ];
+  },
+  #CMD_ACK_MESSAGES
+  1090 => sub {
+    return [_int_to_bytes(4, int(rand(0xFFFFFFFF)))];
+  },
+  #CMD_LOGIN_1
+  1100 => sub {
+    return [_int_to_bytes(4, int(rand(0xFFFFFFFF)))];
+  },
+  #CMD_MSG_TO_NEW_USER
+  1110 => sub {
+  },
+  #CMD_INFO_REQ
+  1120 => sub {
+    my ($params) = @_;
+    return [_int_to_bytes(4, $params->{uin})];
+  },
+  #CMD_EXT_INFO_REQ
+  1130 => sub {
+    my ($params) = @_;
+    return [_int_to_bytes(4, $params->{uin})];
+  },
+  #CMD_CHANGE_PW
+  1180 => sub {
+  },
+  #CMD_NEW_USER_INFO
+  1190 => sub {
+    my ($params) = @_;
+    return [
+      _int_to_bytes(2, length($params->{nick})+1),
+      _str_to_bytes($params->{nick}, 1),
+      _int_to_bytes(2, length($params->{first})+1),
+      _str_to_bytes($params->{first}, 1),
+      _int_to_bytes(2, length($params->{last})+1),
+      _str_to_bytes($params->{last}, 1),
+      _int_to_bytes(2, length($params->{email})+1),
+      _str_to_bytes($params->{email}, 1),
+      _int_to_bytes(1, 0x01),
+      _int_to_bytes(1, 0x01),
+      _int_to_bytes(1, 0x01)
+    ];
+  },
+  #CMD_UPDATE_EXT_INFO
+  1200 => sub {
+  },
+  #CMD_QUERY_SERVERS
+  1210 => sub {
+  },
+  #CMD_QUERY_ADDONS
+  1220 => sub {
+  },
+  #CMD_STATUS_CHANGE
+  1240 => sub {
+    my ($params) = @_;
+    return [_int_to_bytes(4, $params->{status})];
+  },
+  #CMD_NEW_USER_1
+  1260 => sub {
+  },
+  #CMD_UPDATE_INFO
+  1290 => sub {
+    my ($params) = @_;
+    return [
+      _int_to_bytes(2, length($params->{nick})+1),
+      _str_to_bytes($params->{nick}, 1),
+      _int_to_bytes(2, length($params->{first})+1),
+      _str_to_bytes($params->{first}, 1),
+      _int_to_bytes(2, length($params->{last})+1),
+      _str_to_bytes($params->{last}, 1),
+      _int_to_bytes(2, length($params->{email})+1),
+      _str_to_bytes($params->{email}, 1)
+    ];
+  },
+  #CMD_AUTH_UPDATE
+  1300 => sub {
+  },
+  #CMD_KEEP_ALIVE2
+  1310 => sub {
+    return [_int_to_bytes(4, int(rand(0xFFFFFFFF)))];
+  },
+  #CMD_LOGIN_2
+  1320 => sub {
+  },
+  #CMD_ADD_TO_LIST
+  1340 => sub {
+    my ($params) = @_;
+    return [_int_to_bytes(4, $params->{uin})];
+  },
+  #CMD_RAND_SET
+  1380 => sub {
+    my ($params) = @_;
+    return [_int_to_bytes(4, $params->{rand_group})];
+  },
+  #CMD_RAND_SEARCH
+  1390 => sub {
+    my ($params) = @_;
+    return [_int_to_bytes(2, $params->{rand_group})];
+  },
+  #CMD_META_USER
+  1610 => sub {
+  },
+  #CMD_INVIS_LIST
+  1700 => sub {
+    my ($params) = @_;
+    my ($ret, $num);
+
+    $num = $params->{num_contacts};
+    croak ("120 contact limit, send more than one packet")
+      if ($num > 120);
+
+    $ret = [];
+    push @$ret, _int_to_bytes(1, $num);
+    for (my $i = 0; $i < $num; $i++){
+      push @$ret, _int_to_bytes(4, $params->{uins}[$i]);
+    }
+    return $ret;
+  },
+  #CMD_VIS_LIST
+  1710 => sub {
+    my ($params) = @_;
+    my ($ret, $num);
+
+    $num = $params->{num_contacts};
+    croak ("120 contact limit, send more than one packet")
+      if ($num > 120);
+
+    $ret = [];
+    push @$ret, _int_to_bytes(1, $num);
+    for (my $i = 0; $i < $num; $i++){
+      push @$ret, _int_to_bytes(4, $params->{uins}[$i]);
+    }
+    return $ret;
+  },
+  #CMD_UPDATE_LIST
+  1720 => sub {
+    my ($params) = @_;
+    return [
+      _int_to_bytes(4, $params->{uin}),
+      _int_to_bytes(1, $params->{list}),
+      _int_to_bytes(1, $params->{remadd})
+    ];
+  },
+);
+
+%_msg_builders = (
+  #MSG_TEXT
+  1 => sub {
+    my ($params) = @_;
+    return [_str_to_bytes($params->{text})];
+  },
+  #MSG_URL
+  4 => sub {
+    my ($params) = @_;
+    my (@ret, $first);
+    $first = 1;
+    foreach ('description', 'url'){
+      push @ret, (0xFE) if !$first;
+      $first = 0 if $first;
+      push @ret, _str_to_bytes($params->{$_});
+    }
+    return \@ret;
+  },
+  #MSG_AUTH_REQ
+  6 => sub {
+    my ($params) = @_;
+    my (@ret, $first);
+    $first = 1;
+    foreach ('nickname', 'firstname', 'lastname', 'email', 'reason'){
+      push @ret, (0xFE) if !$first;
+      $first = 0 if $first;
+      push @ret, _str_to_bytes($params->{$_});
+    }
+    return \@ret;
+  },
+  #MSG_AUTH
+  8 => sub {
+    my ($params) = @_;
+    my @ret = undef;
+    return \@ret;
+  },
+  #MSG_USER_ADDED message
+  12 => sub {
+    my ($params) = @_;
+    my (@ret, $first);
+    $first = 1;
+    foreach ('nickname', 'firstname', 'lastname', 'email'){
+      push @ret, (0xFE) if !$first;
+      $first = 0 if $first;
+      push @ret, _str_to_bytes($params->{$_});
+    }
+    return \@ret;
+  },
+  #MSG_CONTACTS message
+  19 => sub {
+    my ($params) = @_;
+    my (@ret, $num_uins);
+    $num_uins = keys(%{$params->{contacts}});
+    push @ret, _str_to_bytes($num_uins);
+    foreach (%{$params->{contacts}}) {
+      push @ret, (0xFE);
+      push @ret, _str_to_bytes($_);
+    }
+    return \@ret;
+  }
+);
+
+# == DEVELOPERS' NOTE ==
+# (should this be in pod???)
 #
-# End code.
+# An event is stored as a hash ref (note: not a full blessed object).
+# Here are the fields (keys) in the hash and their descriptions:
 #
+# command    - The numeric command code
+# seq_num_1  - Sequence number 1, which is incremented in every packet
+# seq_num_2  - Sequence number 2, which is incremented in most (?) packets
+# params     - The raw array of bytes that make up the parameters
+# is_ack     - Set to 1 if this is an ACK event, otherwise not present
+# is_multi   - Set to 1 if this is a multi packet, otherwise not present
+#
+# The following fields exist only in outgoing events:
+#
+# send_last  - time of the last resend, as time() (seconds since the epoch)
+# send_count - number of times the event has been sent to the server
+# send_now   - set to 1 when the event is due to be resent
+
+# ====
+# private methods
+# ====
+
+# look for data coming from the server and build events out of it
+sub _do_incoming {
+  my ($self) = @_;
+  my ($raw, @packet, $event);
+
+  while (IO::Select->select($self->{_select}, undef, undef, .00001)) {
+    $self->{_socket}->recv($raw, 10000);
+    @packet = split('', $raw);
+
+    foreach (@packet) {
+      $_ = ord($_);
+    }
+
+    # build the event
+    $event = $self->_parse_packet(\@packet);
+
+    # DEBUG: print out incoming packets
+    if ($self->{_debug}) {
+      print '<-- event #', $event->{seq_num_1}, ' ';
+      _print_packet(\@packet);
+    }
+
+    # put acks in separate array because they will be handled immediately.
+    if ( $event->{is_ack} ) {
+        push @{$self->{_acks_incoming}}, $event;
+    }
+    # stick everything else in the incoming events list
+    else {
+        push @{$self->{_events_incoming}}, $event;
+    }
+  } # end while
+} # end sub _do_incoming
+
+
+# for each incoming ack, remove corresponding outgoing event from queue,
+# and send out acks for every non-ack event we received
+sub _do_acks {
+  my ($self) = @_;
+  my (@params);
+
+  # incoming ACKs are received, delete corrosponding outgoing events
+  foreach ( @{$self->{_acks_incoming}} ) {
+
+    #DEBUG: print out incoming ACKS
+    print "    (ACK  #", $_->{seq_num_1}, ")\n" 
+      if $self->{_debug};
+
+    # remove the matching outgoing event that got ACK from server
+    if ( defined $self->{_events_outgoing}[0] &&
+         $_->{seq_num_1} == $self->{_events_outgoing}[0]{seq_num_1} ) {
+
+        shift @{$self->{_events_outgoing}}; 
+        $self->{_seq_num_1}++; # increment seq_num_1 because event was sucessfully received
+        $self->{_seq_num_2}++; # increment seq_num_1 because event was sucessfully received
+    }
+  } # end foreach
+
+  # remove all incoming acks because they're all processed
+  $self->{_acks_incoming} = [];
+
+  # got some incoming events, send some loving ACKs home
+  # to tell them events are successfully received.
+  foreach ( @{$self->{_events_incoming}} ) {
+
+    push @{$self->{_acks_outgoing}}, { command   => 10,
+                                       is_ack    => 1,
+                                       seq_num_1 => $_->{seq_num_1},
+                                       seq_num_2 => $_->{seq_num_2},
+                                       params    => [_int_to_bytes(4, int(rand(0xFFFFFFFF)))]
+                                     };
+  } # end foreach
+} # end sub _do_acks
+
+
+# split the sub-events out of all the multi events on the incoming
+# queue, put the sub-events on the queue, and remove the multi
+sub _do_multis {
+  my ($self) = @_;
+  my ($event, $i);
+
+  $i = 0;
+  # for every incoming packet
+  foreach (@{$self->{_events_incoming}}) {
+    # if it's not a multi, skip it
+    if (!$_->{is_multi}) {
+      $i++;
+      next;
+    }
+
+    my (@newevents, $offset);
+    #for each packet in the multi packet..
+    $offset = 1;
+    for (my $i = 0; $i < _bytes_to_int($_->{params}, 0, 1); $i++) {
+      # build the event
+      my $packet_length = _bytes_to_int($_->{params}, $offset, 2);
+      $offset += 2;
+      my @packet = @{$_->{params}}[$offset..($offset + $packet_length)-1];
+      $offset += $packet_length;
+
+      # build the event and queue it
+      $event = $self->_parse_packet(\@packet);
+      push @{$self->{_events_incoming}}, $event;
+
+      # DEBUG: print out incoming packets
+      if ($self->{_debug}) {
+	print ' <+ multi #', $event->{seq_num_1}, ' ';
+	_print_packet(\@packet);
+      }
+
+    } # end for
+
+    # remove the multi from the queue
+    splice(@{$self->{_events_incoming}}, $i, 1);
+
+  } # end foreach
+} # end sub _do_multis
+
+
+# if it's time, queue a keepalive packet as close to the head of the queue
+# as possible
+sub _do_keepalives {
+  my ($self) = @_;
+  my ($now);
+
+  # grab current time
+  $now = time();
+
+  # FIX: make the time configgable
+  # Keepalive every 2 minutes, as recommanded by ICQ V5.
+  if ($self->{_last_keepalive} + 2*60 < $now) {
+
+    #DEBUG: print out keepalive
+    print "=== queueing keepalive\n"
+      if $self->{_debug};
+
+    $self->{_last_keepalive} = $now;
+    $self->send_event('CMD_KEEP_ALIVE', undef, 1);
+
+  } # end if
+} #end _do_keepalives
+
+
+# see if the top event needs to be resent, and remove it from the
+# outgoing queue if it's been resent too many times
+sub _do_timeouts {
+  my ($self) = @_;
+
+  # FIX: make the time configgable
+  if ( defined $self->{_events_outgoing}[0] &&
+       $self->{_events_outgoing}[0]{send_last} + 10 <= time() ) {
+
+    if ( $self->{_events_outgoing}[0]{send_count} >= 6 )  {
+
+      # FIX: it would probably be wise to inform the programmer that
+      # their event couldn't be sent.
+
+      #DEBUG: print out timeout
+      print "=== too many resends for ", $self->{_events_outgoing}[0]{seq_num_1}, "\n"
+	if $self->{_debug};
+
+      # out of tries, you loose, next!
+      shift @{$self->{_events_outgoing}};
+    }
+    else {
+      $self->{_events_outgoing}[0]{send_now} = 1;
+    }
+  }
+} # end sub _do_timeouts
+
+
+# call the handler for each event on the incoming queue
+sub _do_handlers {
+  my ($self) = @_;
+
+  foreach ( @{$self->{_events_incoming}} ) {
+
+    # if a handler for this event has been registered
+    if (exists $self->{_handlers}{$_->{command}} ) {
+      # parse the raw event params
+      my $parsedevent = &{$_parsers{$_->{command}}}($_)
+	if ( exists $_parsers{$_->{command}} );
+
+      #call the handler
+      &{$self->{_handlers}{$_->{command}}}($_);
+
+    } # end if
+  } # end foreach
+
+  # empty incoming queue
+  $self->{_events_incoming} = [];
+}
+
+
+# send all outgoing acks, send the top event on the regular
+# outgoing queue if it's marked as ready to go
+sub _do_outgoing {
+  my ($self) = @_;
+
+  foreach (@{$self->{_acks_outgoing}}) {
+
+    #DEBUG: print out sending acks
+    print "--> ACK   #", $_->{seq_num_1}, "\n" 
+      if $self->{_debug};
+
+    $self->_deliver_event($_);
+
+  } # end foreach
+
+  # clear outgoing ack array
+  $self->{_acks_outgoing} = []; 
+
+  if ( $self->{_events_outgoing}[0] and
+       $self->{_events_outgoing}[0]{send_now} ) {
+
+    $self->{_events_outgoing}[0]{send_now} = 0;
+    $self->{_events_outgoing}[0]{send_last} = time();
+    $self->{_events_outgoing}[0]{send_count}++;
+    $self->{_events_outgoing}[0]{seq_num_1} = $self->{_seq_num_1};
+    $self->{_events_outgoing}[0]{seq_num_2} = $self->{_seq_num_2};
+
+    #DEBUG: print out outgoing event
+    print "--> event #", $self->{_events_outgoing}[0]{seq_num_1},
+      " <" , $self->{_events_outgoing}[0]{command}, ">\n"
+	if $self->{_debug};
+
+    $self->_deliver_event($self->{_events_outgoing}[0]);
+
+  } # end if
+} # end sub _do_outgoing
+
+
+# adds an event to the queue, with an optional priority flag
+# (priority means the event is put as close to the head as
+# possible without interrupting a "live" event)
+sub _queue_event {
+  my ($self, $event, $priority) = @_;
+
+  $event->{send_count} = 0; # not resent at all yet
+  $event->{send_last} = 0;  # a time as far in the past as possible
+  $event->{send_now} = 1;   # send me right away when I get to the head of the queue
+
+  if (!$priority) {
+    # regular event; just slap it on the tail of the queue
+
+    push @{$self->{_events_outgoing}}, $event;
+
+  } else {
+    # priority event; stick it on top, or just after that if top event is "live"
+
+    if (
+	# top event not defined (queue empty)
+	!defined $self->{_events_outgoing}[0] or
+	# top event is defined but has not been sent out yet (not live)
+	(defined $self->{_events_outgoing}[0] and
+	 $self->{_events_outgoing}[0]{send_count} == 0)
+       ) {
+      # then stick event on the head of the queue
+      unshift @{$self->{_events_outgoing}}, $event;
+    } else {
+      # there is a live event on the top of the queue (we're waiting for it to be ACKed);
+      # queue this event AFTER the live event so as not to interrupt it
+      splice @{$self->{_events_outgoing}}, 1, 0, $event;
+    }
+
+  }
+}
+
+
+# takes an event, builds a UDP packet, and sends it to the server
+sub _deliver_event {
+  my ($self, $event) = @_;
+  my ($packet, $checkcode, $raw, $length);
+
+  $packet = $self->_make_header($event);
+  push @$packet, @{$event->{params}};
+
+  $checkcode = $self->_calc_checkcode($packet);
+
+  $length = @$packet;
+  $raw = $self->_encrypt($packet, $checkcode); # now $raw might have extra 0-bytes
+  substr($raw, $length) = '';                  # truncate data to correct length
+
+  $self->{_socket}->send($raw);
+}
+
+
+# ICQ Packet Header (client side)
+# ===============================
+# Length       Content (if fixed)  Designation      Description
+# ------       ------------------  -----------      -----------
+# 2 bytes      05 00               VERSION          Protocol version
+# 4 bytes      00 00 00 00         ZERO             Just zeros, purpouse unknown
+# 4 bytes      xx xx xx xx         UIN              Your (the client's) UIN
+# 4 bytes      xx xx xx xx         SESSION_ID       Used to prevent 'spoofing'. See below.
+# 2 bytes      xx xx               COMMAND
+# 2 bytes      xx xx               SEQ_NUM1         Starts at a random number
+# 2 bytes      xx xx               SEQ_NUM2         Starts at 1
+# 4 bytes      xx xx xx xx         CHECKCODE
+# variable     xx ...              PARAMETERS       Parameters for the command being sent
+
+sub _make_header {
+  my ($self, $event) = @_;
+  my ($header);
+
+  $header = [];
+  push @$header, _int_to_bytes(2, 5);
+  push @$header, _int_to_bytes(4, 0);
+  push @$header, _int_to_bytes(4, $self->{_uin});
+  push @$header, _int_to_bytes(4, $self->{_session_id});
+  push @$header, _int_to_bytes(2, $event->{command});
+  push @$header, _int_to_bytes(2, $event->{seq_num_1});
+  push @$header, _int_to_bytes(2, $event->{seq_num_2});
+  push @$header, _int_to_bytes(4, 0); # checkcode gets set later
+
+  return $header;
+}
+
+
+sub _calc_checkcode {
+  my ($self, $packet) = @_;
+  my ($number1, $number2, $r1, $r2, @checkcode);
+
+  # NUMBER1 = B8 B4 B2 B6
+  $number1 = $packet->[8];
+  $number1 <<= 8;
+  $number1 |= $packet->[4];
+  $number1 <<= 8;
+  $number1 |= $packet->[2];
+  $number1 <<= 8;
+  $number1 |= $packet->[6];
+
+  # PL = Packet length
+  # R1 = A random number beetween 0x18 and PL
+  # R2 = Another random number beetween 0 and 0xFF
+  # (the max here may end up 1 too small.. who cares)
+
+  $r1 = int(rand(@$packet - 0x18)) + 0x18;
+  $r2 = int(rand(0xFF));
+
+  $number2 = $r1;
+  $number2 <<= 8;
+  $number2 |= $packet->[$r1];
+  $number2 <<= 8;
+  $number2 |= $r2;
+  $number2 <<=8;
+  $number2 |= $_table[$r2];
+  $number2 ^= 0x00FF00FF;
+
+  @checkcode = _int_to_bytes(4, $number1 ^ $number2);
+  splice(@$packet, 0x14, 0x04, @checkcode);
+
+  return _bytes_to_int(\@checkcode, 0, 4);
+}
+
+
+sub _encrypt {
+  my ($self, $packet, $cc) = @_;
+  my ($code, @plain, @dwords, $i, $raw, $cc_raw);
+
+  $code = Math::BigInt->new(@$packet * 0x68656C6C + $cc);
+  $code = $code->band(Math::BigInt->new(0xFFFFFFFF));
+
+  @plain = splice(@$packet, 0, 0xA, ());
+  $i = 0;
+  while ($i < @$packet) {
+    push @dwords, _bytes_to_int($packet, $i, 4);
+    $i += 4;
+  }
+
+  $i = 0xA;
+  foreach (@dwords) {
+    $_ = Math::BigInt->new($_);
+    $_ = $_->bxor(Math::BigInt->new($code + $_table[$i & 0xFF]));
+    $i += 4;
+  }
+
+  $cc =
+    (($cc & 0x0000001F) << 0x0C) |
+    (($cc & 0x03E003E0) << 0x01) |
+    (($cc & 0xF8000400) >> 0x0A) |
+    (($cc & 0x0000F800) << 0x10) |
+    (($cc & 0x041F0000) >> 0x0F);
+  for ($i = 0; $i < 4; $i++) {
+    $cc_raw .= chr($cc & 0xFF);
+    $cc >>= 8;
+  }
+
+  $raw = '';
+  foreach (@plain) {
+    $raw .= chr($_);
+  }
+  foreach (@dwords) {
+    for ($i = 0; $i < 4; $i++) {
+      $raw .= chr($_ & 0xFF);
+      $_ >>= 8;
+    }
+  }
+  substr($raw, 0x14, 4, $cc_raw);
+
+  return $raw;
+}
+
+
+# ICQ Packet Header (server side)
+# ===============================
+# Length       Content (if fixed)  Designation          Description
+# 2 bytes      05 00               VERSION              Protocol version
+# 1 byte       00                  ZERO                 Unknown
+# 4 bytes      xx xx xx xx         SESSION_ID           Same as in your login packet.
+# 2 bytes      xx xx               COMMAND
+# 2 bytes      xx xx               SEQ_NUM1             Sequence 1
+# 2 bytes      xx xx               SEQ_NUM2             Sequence 2
+# 4 bytes      xx xx xx xx         UIN                  Your (the client's) UIN
+# 4 bytes      xx xx xx xx         CHECKCODE
+# variable     xx ...              PARAMETERS           Parameters for the command being sent
+
+sub _parse_packet {
+  my ($self, $packet) = @_;
+  my ($event, @params);
+
+  # sanity checks
+  # FIX: maybe handle these more gracefully?  :)
+  _bytes_to_int($packet, 3, 4) == $self->{_session_id}
+    or croak("Server told us the wrong session ID!");
+  _bytes_to_int($packet, 13, 4) == $self->{_uin}
+    or croak("Server told us the wrong UIN!");
+
+  # fill in the event's fields
+  $event = {};
+  $event->{command}    = _bytes_to_int($packet, 7, 2);
+  $event->{seq_num_1}  = _bytes_to_int($packet, 9, 2);
+  $event->{seq_num_2}  = _bytes_to_int($packet, 11, 2);
+  $event->{is_ack}     = 1 if $event->{command} == 10;
+  $event->{is_multi}   = 1 if $event->{command} == 530;
+  @params = @$packet[21..@$packet-1];
+  $event->{params} =  \@params;
+
+  return $event;
+}
+
+
+# ====
+# private functions
+# (they're not methods, so don't call them on a Net::ICQ object!)
+# ====
+
+
+# _int_to_bytes(bytes, val)
+#
+# Converts <val> into an array of <bytes> bytes and returns it.
+# If <val> is too big, only the <bytes> least significant bytes are
+# returned.  The array is in little-endian order.
+#
+# _int_to_bytes(2, 0x1234)  == (0x34, 0x12)
+# _int_to_bytes(2, 0x12345) == (0x45, 0x23)
+
+sub _int_to_bytes {
+  my ($bytes, $val) = @_;
+  my (@ret);
+
+  for (my $i=0; $i<$bytes; $i++) {
+    push @ret, ($val >> ($i*8) & 0xFF);
+  }
+
+  return @ret;
+}
+
+
+# _str_to_bytes(str, add_zero)
+#
+# Converts <str> into an array of bytes and returns it.  If <add_zero>
+# is true, makes the array null-terminated (adds a 0 as a the last byte).
+#
+# _str_to_bytes('foo')     == ('f', 'o', 'o')
+# _str_to_bytes('foo', 1)  == ('f', 'o', 'o', 0)
+
+sub _str_to_bytes {
+  my ($string, $add_zero) = @_;
+  my (@ret);
+
+  foreach (split('', $string)) {
+    push @ret, ord($_);
+  }
+  push @ret, 0 if $add_zero;
+
+  return @ret;
+}
+
+
+# _bytes_to_int(array_ref, start, bytes)
+#
+# Converts the byte array referenced by <array_ref>, starting at offset
+# <start> and running for <bytes> values, into an integer, and returns it.
+# The bytes in the array must be in little-endian order.
+#
+# _bytes_to_int([0x34, 0x12, 0xAA, 0xBB], 0, 2) == 0x1234
+# _bytes_to_int([0x34, 0x12, 0xAA, 0xBB], 2, 1) == 0xAA
+
+sub _bytes_to_int {
+  my ($array, $start, $bytes) = @_;
+  my ($ret);
+
+  $ret = 0;
+  for (my $i = $start+$bytes-1; $i >= $start; $i--) {
+    $ret <<= 8;
+    $ret |= ($array->[$i] or 0);
+  }
+
+  return $ret;
+}
+
+
+# _bytes_to_str(array_ref, start, bytes)
+#
+# Converts the byte array referenced by <array_ref>, starting at offset
+# <start> and running for <bytes> values, into a string, and returns it.
+#
+# _bytes_to_str([0x12, 'f', 'o', 'o', '!'], 1, 3) == 'foo'
+
+sub _bytes_to_str {
+  my ($array, $start, $bytes) = @_;
+  my ($ret);
+
+  $ret = '';
+  for (my $i = $start; $i < $start+$bytes; $i++) {
+    $ret .= (chr($array->[$i]) or '');
+  }
+
+  return $ret;
+}
+
+# _bytes_to_strlist(array_ref)
+#
+# Converts the byte array referenced by <array_ref> into an array of
+# strings, and returns a reference to the array.
+# The strings in the byte array must be separated by the byte 0xFE, and the
+# end of the last string to be converted must be followed by the byte 0x00.
+#
+# _bytes_to_strlist(['a', 'b', 0xFE, 'x', 'y', 'z', 0x00]) == ['ab', 'xyz']
+
+sub _bytes_to_strlist {
+  my ($array) = @_;
+  my (@ret, $str);
+
+  $str = '';
+  foreach (@$array) {
+    if ($_ == 0xFE) {
+      push @ret, $str;
+      $str = '';
+    }
+    else {
+      $str .= chr($_);
+    }
+  }
+
+  # remove last 0 from the last string
+  substr($str, -1, 1, '');
+  push @ret, $str;
+  return @ret;
+}
+
+
+# print_packet(packet_ref)
+#
+# Dumps the ICQ packet contained in the byte array referenced by
+# <packet_ref> to STDOUT.  The format is '[byte0 byte1 ...]'
+# where byte0 byte1 ... are all the actual bytes
+# that make up the packet, in 2-character 0-padded hex format.
+# For instance, a dump might begin like this:
+# [02 BD 14 4A ...
+
+sub _print_packet {
+  my ($packet) = @_;
+
+  print "[";
+  foreach (@$packet) {
+    print sprintf("%02X ", $_);
+  }
+  print "]\n";
+
+}
+
 1;
+
