@@ -52,7 +52,7 @@ if ($@) {
 
 print "Checking for Time::Local ...";
 eval {
-    require Time::Local;
+    require IO::Select;
 };
 if ($@) {
     print " missing!\n";

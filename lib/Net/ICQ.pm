@@ -5,7 +5,7 @@ use strict;
 use vars qw(
   $VERSION
   @_table
-  %cmd_codes %srv_codes
+  %_cmd_codes %_srv_codes
   %_parsers %_msg_parsers %_meta_parsers
   %_builders %_msg_builders
 );
@@ -15,7 +15,7 @@ use IO::Select;
 use Time::Local;
 use Math::BigInt;
 
-$VERSION = '0.12';
+$VERSION = '0.13';
 
 
 # "encryption" table (grumble grumble...)
@@ -55,7 +55,7 @@ $VERSION = '0.12';
 );
 
 
-%cmd_codes = (
+%_cmd_codes = (
   CMD_ACK                 => 10,
   CMD_SEND_MESSAGE        => 270,
   CMD_LOGIN               => 1000,
@@ -91,7 +91,7 @@ $VERSION = '0.12';
 );
 
 
-%srv_codes = (
+%_srv_codes = (
   SRV_ACK                 => 10,
   SRV_GO_AWAY             => 40,
   SRV_NEW_UIN             => 70,
@@ -244,7 +244,7 @@ call them on a Net::ICQ object (for example, $icq->do_one_loop).
 
 =item *
 
-do_one_loop
+do_one_loop()
 
 Unless you call the start() method (see below), you must
 continuously call do_one_loop whenever your Net::ICQ object
@@ -280,12 +280,12 @@ sub do_one_loop {
 
 =item *
 
-start
+start()
 
 If you're writing a fairly simple application that doesn't need to
 interface with other event-loop-based libraries, you can just call
 start instead of repeatedly calling do_one_loop.  Essentially, the
-start method does this: S<C<while (connected) {do_one_loop}>>
+start method does this: while(connected) { do_one_loop }
 
 If you have called the start method, it will return after
 disconnect is called.
@@ -321,8 +321,8 @@ sub add_handler {
   my ($self, $command, $sub) = @_;
   my ($command_num);
 
-  $command_num = exists $srv_codes{$command} ?
-    $srv_codes{$command} :
+  $command_num = exists $_srv_codes{$command} ?
+    $_srv_codes{$command} :
     $command;
 
   print "=== add handler <", sprintf("%04X", $command_num), "> = $sub\n";
@@ -350,8 +350,8 @@ explanation of the correct parameters for each event.
 sub send_event {
   my ($self, $command, $params, $priority) = @_;
 
-  $command = $cmd_codes{$command}
-    if exists ($cmd_codes{$command});
+  $command = $_cmd_codes{$command}
+    if exists ($_cmd_codes{$command});
 
   $self->_queue_event(
     {
@@ -388,70 +388,6 @@ sub disconnect {
   $self->_do_outgoing();
   $self->{_connected} = 0;
 }
-
-
-=head1 CLIENT EVENTS
-
-Client events are the messages an ICQ client, i.e. your code,
-sends to the server.  They represent things such as a logon
-request, a message to another user, or a user search request.
-They are sometimes called 'commands' because they represent
-the 'commands' that an ICQ client can execute.
-
-When you ask Net::ICQ to send an event with send_event()
-(described above), you need to provide 2 things:
-the event name, and the parameters.
-
-=head2 Event name
-
-The event name is the first parameter to send_event(),
-and it specifies which event you are sending.  You may either
-specify the string code or the numeric code.  The section
-CLIENT EVENT LIST below describes all the events and
-gives the codes for each.  For example: when sending a
-text message to a user, you may give the event name as
-either the string 'CMD_SEND_MESSAGE' or the number 270.
-
-The hash C<%Net::ICQ::cmd_codes> maps string codes to numeric
-codes.  C<keys(%Net::ICQ::cmd_codes)> will produce a list of
-all the string codes.
-
-=head2 Parameters
-
-The parameters list is the second parameter to send_event(),
-and it specifies the data for the event.  Every event has
-its own parameter list, but the general idea is the same.
-The parameters list is stored as a hashref, where the hash
-contains a key for each parameter.  Almost all the events
-utilize a regular 1-level hash where the values are plain
-scalars, but a few events do require 2-level hash.  The
-CLIENT EVENT LIST section lists the parameters for every
-client event.
-
-For example: to send a normal text message with the text
-'Hello world' to UIN 1234, the parameters would
-look like this:
-
-  {
-    'type'         => 1,
-    'text'         => 'Hello world',
-    'receiver_uin' => 1234
-  }
-
-=head2 A complete example
-
-Here is the complete code using send_event() to send the
-message 'Hello world' to UIN 1234:
-
-  $params = {
-    'type'         => 1,
-    'text'         => 'Hello world',
-    'receiver_uin' => 1234
-  };
-  $icq->send_event('CMD_SEND_MESSAGE', $params);
-
-=cut
-
 
 %_parsers = (
   # SRV_ACK
@@ -645,7 +581,7 @@ message 'Hello world' to UIN 1234:
     $parsedevent->{uin}    = _bytes_to_int($event->{params}, 0, 4);
     $parsedevent->{status} = _bytes_to_int($event->{params}, 4, 4);
     $event->{params} = $parsedevent;
-  },
+  },  },
   # SRV_SYSTEM_MESSAGE
   450 => sub {
     #FIX : don't know what to do here ..

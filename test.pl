@@ -25,41 +25,27 @@ $icq->add_handler("SRV_SYS_DELIVERED_MESS", \&pimp_neticq);
 # register a SIGINT handler, so ctrl-c will trigger a clean shutdown
 $SIG{INT} = \&disconnect;
 
-# enable debugging (this is undocumented!!!)
-$icq->{_debug} = 1;
-
 # Run the processing loop.  This well never exit.  The program exits
 # when the sub disconnect (below) is called.
 $icq->start;
 
 
 sub pimp_neticq {
-  # incoming event
-  my ($event) = @_;
-  # params from incoming event, and for outgoing event
-  my ($in_params, $out_params);
+  my ($parsedevent) = @_;
 
-  $in_params = $event->{params};
+  # set the receiver to the UIN of the person who sent the message
+  $parsedevent->{params}{receiver_uin}  = $parsedevent->{params}{uin};
 
-  # is this is a normal text message?
-  if ($in_params->{type} == 1){
-
-    # create a parameter hash for a URL message
-    $out_params = {};
-    $out_params->{type} = 4;
-
-    # set the receiver to the UIN of the person who sent the message
-    $out_params->{receiver_uin} = $in_params->{uin};
-
-    # set the description to the message text
-    $out_params->{description}  = $in_params->{text};
-
-    # set the URL to the Net::ICQ website
-    $out_params->{url}          = 'http://neticq.sourceforge.net/';
-
+  # if this is a normal text message, modify it to be a
+  # URL message with the original text as the description,
+  # and the Net::ICQ website as the URL.
+  if ($parsedevent->{params}{type} == 1){
+    $parsedevent->{params}{type}        = 4;
+    $parsedevent->{params}{url}         = 'http://neticq.sourceforge.net/';
+    $parsedevent->{params}{description} = $parsedevent->{params}{text};
   }
   # send the message back
-  $icq->send_event('CMD_SEND_MESSAGE', $out_params);
+  $icq->send_event('CMD_SEND_MESSAGE', $parsedevent->{params});
 }
 
 

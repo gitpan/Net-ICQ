@@ -34,18 +34,3 @@ added debug print for add_handler, cleaned up other debug prints, fixed
 do_multis so it removes multis from the queue after processing them
 
 added perl 5.6 check to Makefile.PL
-
-
-0.14
-====
-
-fixed stupid syntax error in ICQ.pm (did that go into a release...?)
-and updated test.pl to be more clear and enlightening
-
-fixed dumb Makefile.PL error, wasn't actually checking for Time::Local before
-
-made cmd_codes and srv_codes public
-
-wrote the CLIENT EVENTS section in pod
-
-added test2.pl
