@@ -1,50 +1,80 @@
 #!/usr/bin/perl -w
 #
-# Example Goofey client using Net::Goofey
+# Example ICQ client using Net::ICQ
 #
-# Last updated by gossamer on Wed Jul 15 15:19:34 EST 1998
+# Last updated by gossamer on Wed Sep 23 20:16:42 EST 1998
+#
+
+#
+#  NOTE
+#  Change the UIN-HERE and PASSWORD-HERE tokens on line 53 
+#  to YOURS before you use this!
 #
 
 use strict;
-use Net::Goofey;
+
+use Getopt::Std;
+use Net::ICQ;
+
+my $DEBUG = 1;
+
+my %opt;
 
 sub die_nicely {
    my $signal = shift;
 
-   print STDERR "Goofey got signal $signal, exiting.\n";
+   print STDERR "ICQ got signal $signal, exiting.\n";
    exit;
 
 }
 
-my $Goofey = Net::Goofey->new();
+sub user_help {
 
-if (!$Goofey) {
-   die "Failed to connect to Goofey server.\n";
+   print "Use the source, Luke.\n";
+   return 1;
 }
 
-$Goofey->signon();
-print $Goofey->who("skud");
+#
+# Main
+#
 
-print "Successfully signed on, backgrounding.\n";
+getopts('vhw:l:s:', \%opt);
 
-exit;
-
-# At this point, we have a connection
-if (fork()) {
-   # Parent process - die politely
-   exit();
+if ($opt{"h"}) {
+   # help requested
+   &user_help();
+   exit;
+} elsif ($opt{"v"}) {
+   # version number
+   print "Basic Net::ICQ client built with " . Net::ICQ::version() . "\n";
+   exit;
 }
 
-# This is the child process, backgrounded.  It stays alive to do stuff.
+my $ICQ = new Net::ICQ "UIN-HERE", "PASSWORD-HERE";
+if (!$ICQ) {
+   die "Failed to connect to ICQ server: $!\n";
+}
+
+$ICQ->login() || die "Couldn't log on.";
 
 # Set the interrupt handlers
 $SIG{INT} = $SIG{TERM} = \&die_nicely;
 
-while (1) {
-   # Try to accept a connection
-   # If we have one, answer it properly
-   # else continue
+$DEBUG && print STDERR "DEBUG:  CLIENT:  Done connecting\n";
 
-}
-
-
+## At this point, we have a connection
+#if (fork()) {
+#   # Parent process
+#
+#} else {
+#   # Child process - get replies and print them
+#
+#   while ($ICQ->incoming_packet_waiting()) {
+    while (1) {
+      $DEBUG && print STDERR "DEBUG:  CLIENT:  Going to get packet ...\n";
+      $ICQ->incoming_process_packet();
+   }
+#}
+#
+# End.
+#

@@ -6,9 +6,9 @@
 # Change 1..1 below to 1..last_test_to_print .
 # (It may become useful if the test is moved to ./t subdirectory.)
 
-BEGIN { $| = 1; print "1..3\n"; }
+BEGIN { $| = 1; print "1..1\n"; }
 END {print "not ok 1\n" unless $loaded;}
-use Net::Goofey;
+use Net::ICQ;
 $loaded = 1;
 print "ok 1\n";
 
@@ -19,19 +19,12 @@ print "ok 1\n";
 # of the test code):
 
 # Connect
-#my $Goofey = Net::Goofey->new("gossamer", "1uYpXRVnt+");
-my $Goofey = Net::Goofey->new();
-if ($Goofey) {
-   print "ok 2\n"
-} else {
-   print "not ok 2\n"
-}
-
-if ($Goofey->who("skud")) {
-   print "ok 3\n"
-} else {
-   print "not ok 3\n"
-}
+#my $ICQ = Net::ICQ->new();
+#if ($ICQ) {
+#   print "ok 2\n"
+#} else {
+#   print "not ok 2\n"
+#}
 
 exit 0;
 

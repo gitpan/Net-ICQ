@@ -1,0 +1,14 @@
+
+0.02.1 -> 0.03
+   - Fixed the pack/unpack functions.
+   - Program looks for environment variables ICQHOST and ICQPORT if
+     not specified in constructor arguments or configuration file.
+   - All the calls to construct_message() and send_message() were wrong.
+     Oops.
+   - Bunch of other stuff.  It compiles now :).
+   - Swapped username to 'uin' in code to make it clearer.
+
+0.02 -> 0.02.1
+   - Remembered I'm supposed to be keeping a changelog :)
+   - Added some skeleton functions and documentations.
+
