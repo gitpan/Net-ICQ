@@ -1,0 +1,31 @@
+
+
+Net::ICQ
+
+
+This is a really unfinished module for communicating with an ICQ
+server.
+
+This is being constructed using the ICQ specification at:
+   http://www.student.nada.kth.se/~d95-mih/icq/
+
+Please note: 
+   I am in no way affiliated with Mirabilis!
+
+   This is an unofficial module and not acknowledged, supported or
+   condoned by Mirabilis in any way.
+
+
+Contacting me:  
+   <URL:mailto:gossamer@tertius.net.au> is best, or the icq-dev
+   mailing list, see
+   http://www.student.nada.kth.se/~d95-mih/icq/#icq-devel for details.
+
+
+ObLegalStuff:
+   Copyright (c) 1998 Bek Oberin. All rights reserved. This program is
+   free software; you can redistribute it and/or modify it under the
+   same terms as Perl itself.
+
+
+
