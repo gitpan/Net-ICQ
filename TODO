@@ -8,3 +8,14 @@ In the example client, the background thread keeps running
 even though the foregound one's died.  How do I make it die
 nicely?
 
+
+Suggestion:  We need a LOGIN_FINISHED tag on the object that knows if
+we've logged in properly and got all the acks.  Can't do stuff like
+send messages until login is done.  The client shouldn't fork until
+then, either.  It mucks up the sequence numbers.
+
+Who did word_to_chars? Isn't it just like unpack("N")?  or pack("N"),
+I get them mixed up.
+
+Client needs to send KEEPALIVE thingies.
+

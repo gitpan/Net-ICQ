@@ -2,7 +2,7 @@
 #
 # Example ICQ client using Net::ICQ
 #
-# Last updated by gossamer on Wed Sep 23 20:16:42 EST 1998
+# Last updated by gossamer on Wed Nov 25 15:54:14 EST 1998
 #
 
 #
@@ -20,6 +20,7 @@ use Term::ReadLine;
 my $DEBUG = 1;
 
 my %opt;
+
 
 sub die_nicely {
    my $signal = shift;
@@ -51,27 +52,32 @@ if ($opt{"h"}) {
    exit;
 }
 
-# TODO: should read these params from disk
-my $ICQ = new Net::ICQ "UIN_HERE", "PASSWORD_HERE";
+my $ICQ = new Net::ICQ "UIN-HERE", "PASSWORD-HERE";
 if (!$ICQ) {
    die "Failed to connect to ICQ server: $!\n";
 }
 
-$ICQ->login() || die "Couldn't log on.";
+# set the contact file - yes, it's a hack but it works.
+my %contacts_bynumber;
+my $contactfile = `cat client.contacts`;
+eval $contactfile;
+
+$ICQ->login(\%contacts_bynumber) || die "Couldn't log on.";
 
 # Set the interrupt handlers
 $SIG{INT} = $SIG{TERM} = \&die_nicely;
 
 $DEBUG && warn "DEBUG:  CLIENT:  Done connecting\n";
 
-$ICQ->request_userinfo("15401522");
 # At this point, we have a connection
 if (fork()) {
    # Parent process - Get things and send them
    my $Input = new Term::ReadLine 'Net::ICQ Client';
 
-   while ($_ = $Input->readline("> ")) {
+   while (defined($_ = $Input->readline("> "))) {
       $DEBUG && warn "INPUT: got '$_'\n";
+
+      next if /^\s*$/;
 
       if (/^p (\d+)=(.*)/i) {
          # msg to $1, text = $2;

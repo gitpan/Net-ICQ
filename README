@@ -10,18 +10,29 @@ server.
     It's here because others are helping me create it and this
     is the easient way to share code :)
 
+
 CHANGES
 =======
 
 Most recent changes are:
-0.06 -> 0.07
-   - Added separate TODO file.
-   - Added a bunch more debug output.
-   - SILENT_TOO_LONG packet now handled and replied too with a
-     KEEPALIVE packet.
-   - Made sure every function always returns some value.
-   - packet_waiting now accepts a timeout argument.
-   - Many changes to example client, it's now almost functional!
+0.07 -> 0.08
+   - dword_2_hex renamed dword_to_chars to match other names.
+   - utility function decimal_to_hex added.
+   - Example client now uses config files, sorta.
+   - Added new 'Birthday' status.
+   - New skeleton function receive_end_contactlist_status(),
+     receive_not_logged_in().
+   - Added new server packet 0xF000, NOT_LOGGED_IN.
+   - Altered logon sequence according to what Graham Roff
+     <graham@modemcable149.173.mmtl.videotron.net> posted to the list
+     about it.
+   - Renamed some packet types (and associated functions, etc.) to be 
+     more clear:  
+        LOGIN_1 to REQUEST_OFFLINE_MESSAGES, 
+        REPLY_X1 to END_CONTACTLIST_STATUS, 
+        REPLY_X2 to END_OFFLINE_MESSAGES, 
+        CMD_X1 to ACK_OFFLINE_MESSAGES, 
+
 
 INSTALLING
 ==========
@@ -49,9 +60,9 @@ CONTACTS
    interest in Net::ICQ.  Anybody interested in helping with
    development or testing is encouraged to subscribe, as are people
    who just want to keep track of what's going on with Net::ICQ.  It's
-   a standard majordomo list - to subscribe, send 'subscribe' to
-   icq-perl-request@tertius.net.au.  To post, address your message to
-   icq-perl@tertius.net.au.
+   a standard majordomo list if you grok them, or trot along to
+   http://www.tertius.net.au/lists/icq-perl/ to subscribe with a nifty
+   web interface.
 
 
 CREDITS
@@ -73,5 +84,4 @@ DISCLAIMERS
    Copyright (c) 1998 Bek Oberin. All rights reserved. 
    This program is free software; you can redistribute it and/or
    modify it under the same terms as Perl itself.
-
 

@@ -32,7 +32,7 @@ use Carp;                     # Regular Carp
 @EXPORT = qw();
 @EXPORT_OK = qw();
 
-$VERSION = "0.07";
+$VERSION = "0.08";
 
 =head1 NAME
 
@@ -72,6 +72,7 @@ my %user_status = (
    "AWAY" => 0x01000000,
    "DND" => 0x11000000,
    "INVISIBLE" => 0x00010000,
+   "BIRTHDAY" => 0x00080000,
    );
 my %user_status_bynumber = reverse %user_status;
 
@@ -80,7 +81,7 @@ my %server_commands_bynumber = (
    0x00F0 => "GO_AWAY",
    0x0a00 => "ACK",	
    0x1801 => "INFO_REPLY",
-   0x1C02 => "REPLY_X1",
+   0x1C02 => "END_CONTACTLIST_STATUS",
    0x2201 => "EXT_INFO_REPLY",
    0x2800 => "SILENT_TOO_LONG",
    0x4600 => "NEW_USER_UIN",
@@ -97,7 +98,8 @@ my %server_commands_bynumber = (
    0xC800 => "UPDATE_EXT_REPLY",
    0xDC00 => "RECEIVE_MESSAGE",
    0xE001 => "UPDATE_REPLY",
-   0xE600 => "REPLY_X2",
+   0xE600 => "END_OFFLINE_MESSAGES",
+   0xF000 => "NOT_LOGGED_IN",
    0xFA00 => "TRY_AGAIN",
    );
 my %server_commands = reverse %server_commands_bynumber;
@@ -113,8 +115,8 @@ my %client_commands_bynumber = (
    0x2E04 => "KEEP_ALIVE",
    0x3804 => "SEND_TEXT_CODE",
    0x3C05 => "ADD_TO_LIST",
-   0x4204 => "CMD_X1",
-   0x4C04 => "LOGIN_1",
+   0x4204 => "ACK_OFFLINE_MESSAGES",
+   0x4C04 => "REQUEST_OFFLINE_MESSAGES",
    0x5604 => "MSG_TO_NEW_USER",
    0x5604 => "REQ_ADD_TO_LIST",
    0x6004 => "INFO_REQ",
@@ -148,6 +150,8 @@ C<ICQUSER>, C<USER> then C<LOGNAME>.
 
 C<PASSWORD> defaults to the contents of the file C<$HOME/.icqpw>.
 
+C<STATUS> defaults to C<ONLINE>.
+
 C<HOST> and C<PORT> refer to the remote host to which a ICQ connection
 is required.  Leave them blank unless you want to connect to a server
 other than Mirabilis.
@@ -177,6 +181,8 @@ sub new {
    $self->{"port"} = $port || $ENV{"ICQPORT"} || $Default_ICQ_Port;
    chomp($self->{"tty"} = `tty`);
    $self->{"status"} = $status || $user_status{"ONLINE"};
+   
+   $self->{"sequence_number"} = 0x0100;
 
    $DEBUG && warn "CONSTRUCTOR:  Host: " . $self->{"host"} . ", Port: " . $self->{"port"} . "\n";
    $DEBUG && warn "CONSTRUCTOR:  UIN: " . $self->{"uin"} . ", Password: " . $self->{"password"} . "\n";
@@ -213,15 +219,20 @@ sub DESTROY {
 These are correspond with things you might want to do, rather
 than the actual packets in the protocol.
 
-=item login ( );
+=item login ( UINs );
 
-Logs you into the ICQ server, requests saved messages and other
-standard login-type things.
+Logs you into the ICQ server, set contact list to UINs (reference to a
+hash keyed on number, values are names, requests saved messages) and
+other standard login-type things.
 
 =cut
 sub login {
    my $self = shift;
+   my $uins = shift;
+
    my ($data_pack);
+
+   $self->{"contactlist"} = $uins;
 
    # construct the login packet data
    $data_pack = pack("Nna*N2nNcN3",
@@ -328,7 +339,7 @@ sub incoming_process_packet {
       unpack("CCnn", $message);  
 
    if ($DEBUG) {
-      my $command_hex = uc(sprintf("%#04x", $command));
+      my $command_hex = &decimal_to_hex($command);
       if (my $sc = $server_commands_bynumber{$command}) {
          warn "INCOMING:  Got command " .  
                $server_commands_bynumber{$command} . " ($command/$command_hex) sequence $sequence_number\n";
@@ -357,8 +368,8 @@ sub incoming_process_packet {
          return $self->$command_name($message);
       } else {
          # TODO: can't cope - what do we do with this packet!!
-         warn "UNKNOWN PACKET TYPE: '$command', sequence number '$sequence_number'";
-         $DEBUG && warn "INCOMING: Unknown packet dump: $message";
+         warn "UNKNOWN PACKET TYPE: '$command/" . &decimal_to_hex($command) . "', sequence number '$sequence_number'";
+         $DEBUG && warn "INCOMING: Unknown packet dump: " . Dumper($message) . "\n";
          return 0;
       }
    }
@@ -411,10 +422,10 @@ sub send_contactlist {
    my $self = shift;
    my @uins = @_;
 
-   $DEBUG && warn ">>CONTACTLIST\n";
+   $DEBUG && warn ">>CONTACTLIST UINs:" . join(", ",@uins) . "\n";
    my $data = pack("n", scalar(@uins));
    foreach (@uins) {
-      $data .= pack("N", $_);
+      $data .= pack("N", dword_to_chars($_));
    }
 
    return $self->send_message($self->construct_message("CONTACT_LIST", $data));
@@ -586,22 +597,29 @@ sub receive_login_reply {
    my $self = shift;
    my $message = shift;
 
+
    my ($user_uin, $user_ip, $login_seq) = unpack("N2n", $message); 
       # `unknown' fields ignored
 
    $DEBUG && warn "<<RECEIVE_LOGIN_REPLY user_uin=" . 
-                    dword_2_chars($user_uin) . 
+                    dword_to_chars($user_uin) . 
                     "  user_ip=$user_ip  login_seq=$login_seq\n";
+
+   # NOW we can do the rest of the login stuff
+   $self->send_message($self->construct_message("LOGIN_2", pack("C", 0)));
+   $self->send_message($self->construct_message("REQUEST_OFFLINE_MESSAGES"));
+   $self->send_contactlist(keys %{ $self->{"contactlist"} });
+   $self->change_status($self->{"status"});
 
    return 1;
 }
 
-sub receive_reply_x2 {
+sub receive_end_offline_messages {
    my $self = shift;
    my $message = shift;
 
-   $DEBUG && warn "<<USER REPLY X2\n";
-   $self->send_message($self->construct_message("LOGIN_2", pack("C",0)));
+   $DEBUG && warn "<<END_OFFLINE_MESSAGES\n";
+   $self->send_message($self->construct_message("ACK_OFFLINE_MESSAGES"));
    return 1;
 }
 
@@ -609,6 +627,7 @@ sub receive_silent_too_long {
    my $self = shift;
 
    $DEBUG && warn "<<SILENT TOO LONG\n";
+   # TODO or is it too late at this point?
    $self->send_keepalive();
    return 1;
 }
@@ -692,6 +711,31 @@ sub receive_status_update {
 
    $DEBUG && warn "<<STATUS UPDATE\n";
    # TODO
+   # NOTE:  these need to be ANDed with 0x01FF to get rid of
+   #        the high-bits in the new clients that we can't decode.
+
+   return 0;
+}
+
+
+sub receive_end_contactlist_status {
+# NB sent during login when last contactlist status update sent
+   my $self = shift;
+   my $message = shift;
+
+   $DEBUG && warn "<<END CONTACTLIST STATUS\n";
+   # TODO
+
+   return 0;
+}
+
+sub receive_not_logged_in {
+# NB sent during login when last contactlist status update sent
+   my $self = shift;
+   my $message = shift;
+
+   $DEBUG && warn "<<NOT LOGGED IN\n";
+   # TODO
 
    return 0;
 }
@@ -742,7 +786,7 @@ sub construct_message {
                        $ICQ_Version_Minor,
                        $client_commands{$command},
                        $seq_num,
-  	               dword_2_chars($self->{"uin"}))
+  	               dword_to_chars($self->{"uin"}))
          . $data;
 
   return $message;
@@ -750,13 +794,13 @@ sub construct_message {
 
 =pod
 
-=item dword_2_chars ( DWORD )
+=item dword_to_chars ( DWORD )
 
 Returns the passed DWORD converted to Intel endian character sequence.
 
 =cut
 
-sub dword_2_chars
+sub dword_to_chars
 {
     my $num = shift;
     my @buf;
@@ -777,6 +821,19 @@ sub dword_2_chars
 
     return($buf);
 }
+
+=pod
+
+=item decimal_to_hex ( NUMBER )
+
+Returns the passed NUMBER in hex representation as a string.
+
+=cut
+
+sub decimal_to_hex {
+   return uc(sprintf("%#04x", $_[0]));
+}
+
 
 
 =pod

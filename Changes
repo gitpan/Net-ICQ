@@ -2,6 +2,24 @@
       names in [...], all the ones without square brackets were
       done by Bek Oberin.)
 
+0.07 -> 0.08
+   - dword_2_hex renamed dword_to_chars to match other names.
+   - utility function decimal_to_hex added.
+   - Example client now uses config files, sorta.
+   - Added new 'Birthday' status.
+   - New skeleton function receive_end_contactlist_status(),
+     receive_not_logged_in().
+   - Added new server packet 0xF000, NOT_LOGGED_IN.
+   - Altered logon sequence according to what Graham Roff
+     <graham@modemcable149.173.mmtl.videotron.net> posted to the list
+     about it.
+   - Renamed some packet types (and associated functions, etc.) to be 
+     more clear:  
+        LOGIN_1 to REQUEST_OFFLINE_MESSAGES, 
+        REPLY_X1 to END_CONTACTLIST_STATUS, 
+        REPLY_X2 to END_OFFLINE_MESSAGES, 
+        CMD_X1 to ACK_OFFLINE_MESSAGES, 
+
 0.06 -> 0.07
    - Added separate TODO file.
    - Added a bunch more debug output.
