@@ -1,3 +1,33 @@
+(NB:  See Credits section of the README for expansion of the
+      names in [...], all the ones without square brackets were
+      done by Bek Oberin.)
+
+0.04 -> 0.05
+   - Added new argument, $status, to constructor.
+   - Updated README file, added info about icq-dev@tertius.net.au.
+   - New file, README.developers with code comments.
+   - [Jah] Removed find_incoming_port() which shouldn't have been
+     there in the first place.
+   - [Jah] Added dword_2_chars() function to convert to intel endian 
+     format.
+   - [Jah] Fixed construct_message() so that it wouldn't increment 
+     the sequence number when it really shouldn't.
+   - [Jah] Added LOGIN packet information to the login() function.
+   - search() now groks "Lastname, Firstname" as a name.
+   - Removed send_ack from receive_login_reply - it's already been sent
+     at that point.
+   - Cleaned up incoming_process_packet() a bit and changed the long
+     if/elsif set to use a coderef to find the method for each packet.
+   - Removed config file stuff - it's something the client should do,
+     not the library.
+   - Added "TODO" everyplace the code desperately needs frobbing, so
+     you can see with a search what needs to be done.
+
+0.03 -> 0.04
+   - Croak if we can't find a password or UIN.
+   - Added a bunch of debugging printouts.
+   - Fixed the socket stuff in incoming_process_packet().
+   - Changed stray 'warn's and 'die's to carp/croak.
 
 0.02.1 -> 0.03
    - Fixed the pack/unpack functions.

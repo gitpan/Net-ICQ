@@ -2,7 +2,7 @@
 #
 # Example ICQ client using Net::ICQ
 #
-# Last updated by gossamer on Wed Sep 23 20:16:42 EST 1998
+# Last updated by gossamer on Thu Sep 24 22:56:27 EST 1998
 #
 
 #
@@ -49,6 +49,8 @@ if ($opt{"h"}) {
    print "Basic Net::ICQ client built with " . Net::ICQ::version() . "\n";
    exit;
 }
+
+# TODO we should use a config file to get parameters from disk
 
 my $ICQ = new Net::ICQ "UIN-HERE", "PASSWORD-HERE";
 if (!$ICQ) {

@@ -1,0 +1,39 @@
+
+README.developing
+
+You get extra bonus points for doing things "my way" because it
+lets me integrate code waaaaaay easier.  This means your changes
+will be integrated quick and I will be happy and a bunch of
+other good stuff :)
+
+Important stuff:
+   - The recieve_some_packet() functions do NOT have to ack packets,
+     by that point the ack has been sent.
+
+   - Every function should return something.  If there's no obvious
+     info that needs returning then return 1 for success or 0 for
+     failure.
+
+
+Nitpicks:
+   These sound like really picky bullshit but if all the code's in
+   the same "style" then it's -much- easier to skim it and not miss
+   things.  Style stuff would be ...
+
+   - Three character indents, spaces not tabs, and copy the bracing
+     in the other code.
+
+   - Giving me changes as a unified diff (ie 'diff -u') so I can see
+     what fits where.  This also makes applying the diff easier
+     because the code's almost certainly changed since you took the
+     diff.  
+
+   - Document what you did!  Inline comments or a note in this file or
+     whatever.  I'll update the Changes file though.
+
+   - Put spaces and newlines and stuff ... spread out code is easier
+     for me to read.  eg:
+        my $tmp=4+3-dword2chars("fred);             # hard to read
+     versus:
+        my $tmp = 4 + 3 - &dword2chars("fred);      # easier
+

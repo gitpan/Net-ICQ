@@ -10,7 +10,7 @@ package Net::ICQ;
 # This program is free software; you can redistribute it and/or modify
 # it under the same terms as Perl itself.
 #
-# Last updated by gossamer on Wed Sep 23 20:05:58 EST 1998
+# Last updated by gossamer on Thu Sep 24 19:10:34 EST 1998
 #
 
 use strict;
@@ -32,7 +32,7 @@ use Carp;                     # Regular Carp
 @EXPORT = qw();
 @EXPORT_OK = qw();
 
-$VERSION = "0.04";
+$VERSION = "0.05";
 
 =head1 NAME
 
@@ -138,7 +138,7 @@ my %client_commands = reverse %client_commands_bynumber;
 
 =head1 CONSTRUCTOR
 
-=item new ( [ USERNAME, PASSWORD [, HOST [, PORT ] ] ])
+=item new ( [ USERNAME, PASSWORD [, STATUS [, HOST [, PORT ] ] ] ])
 
 Opens a connection to the ICQ server.  Note this does not automatially
 log you into the server, you'll need to call login().
@@ -159,25 +159,22 @@ been encountered.
 
 sub new {
    my $prototype = shift;
-   my $arg_uin = shift;
-   my $arg_password = shift;
-   my $arg_host = shift;
-   my $arg_port = shift;
+   my $uin = shift;
+   my $password = shift;
+   my $status = shift;
+   my $host = shift;
+   my $port = shift;
 
    my $class = ref($prototype) || $prototype;
    my $self  = {};
 
-   # read config file first 'cause arguments override it
-   my ($uin, $password, $host, $port, $status, @contacts) = 
-      &read_config_file($Config_File);
-   $self->{"uin"} = $arg_uin || $uin || $ENV{"ICQUSER"} || 
+   $self->{"uin"} = $uin || $ENV{"ICQUSER"} || 
       croak "Unknown ICQ UIN - please specify";
-   $self->{"password"} = $arg_password || $password ||
+   $self->{"password"} = $password ||
       croak "Unknown ICQ password - please specify";
-   $self->{"host"} = $arg_host || $host || $ENV{"ICQHOST"} || $Default_ICQ_Host;
-   $self->{"port"} = $arg_port || $port || $ENV{"ICQPORT"} || $Default_ICQ_Port;
+   $self->{"host"} = $host || $ENV{"ICQHOST"} || $Default_ICQ_Host;
+   $self->{"port"} = $port || $ENV{"ICQPORT"} || $Default_ICQ_Port;
    chomp($self->{"tty"} = `tty`);
-   $self->{"incoming_port"} = &find_incoming_port();
    $self->{"status"} = $status || $user_status{"ONLINE"};
 
    $DEBUG && warn "CONSTRUCTOR:  Host: " . $self->{"host"} . ", Port: " . $self->{"port"} . "\n";
@@ -223,10 +220,24 @@ standard login-type things.
 =cut
 sub login {
    my $self = shift;
+   my ($data_pack);
 
-   $self->send_message($self->construct_message("LOGIN"));
-   $self->send_message($self->construct_message("LOGIN_1"));
-   #$self->send_message($self->construct_message("CONTACT_LIST"));
+   # construct the login packet data
+   $data_pack = pack("Nna*N2nNcN3",
+		     $self->{"socket"}->sockport,	       # PORT
+		     (length($self->{"password"}) + 1)<<8, # PASSWD LEN (clobbers long passwds?)
+		     $self->{"password"} . "\0",	          # PASSWORD
+		     $self->{"socket"}->sockaddr,	       # USER_IP
+		     defined($user_status_bynumber{$self->{"status"}}) 
+		          ? $self->{"status"} : 0x00000000, # STATUS 
+		     ++$self->{"login_seq_num"},	          # LOGIN_SEQ_NUM
+		     0x78000000, 			                   # X1
+		     0x04,				                      # X2
+		     0x02000000,			                   # X3
+		     0x00000000,			                   # X4
+		     0x08007800);			                   # X5
+		     
+   $self->send_message($self->construct_message("LOGIN", $data_pack));
    # TODO grok messages they send back!
 
    return 1;
@@ -258,6 +269,12 @@ sub search {
       my $last_name = $2;
       return $self->search_user('',$first_name, $last_name, '');
 
+   } elsif ($searchtext =~ /^(\w+)\s+(\w+)/) {
+      # alpha separated by comma is prob'ly Lastname, Firstname
+      my $last_name = $1;
+      my $first_name = $2;
+      return $self->search_user('',$first_name, $last_name, '');
+
    } else {
       # assume it's a nickname we're searching
       return $self->search_user($searchtext,'','','');
@@ -279,7 +296,6 @@ sub incoming_packet_waiting {
    my $self = shift;
 
    return $self->{"select"}->can_read(0);
-
 }
 
 =pod
@@ -292,17 +308,10 @@ Do stuff.
 sub incoming_process_packet {
    my $self = shift;
 
-   $DEBUG && warn "INCOMING:  Waiting for incoming packet ...\n";
-
    my $server;
    my $message;
-
-   #$self->{"socket"}->accept() ||
-   #   croak "ERROR:  Failed to accept connection:  $!";
-
-   #if (!defined(recv($server, $message, 9999, 0))) {
-   #   carp "recv: $!";
-   #}
+   
+   $DEBUG && warn "INCOMING:  Waiting for incoming packet ...\n";
 
    my $sock = $self->{"socket"};
    unless ($sock->recv($message, 2048)) {
@@ -315,38 +324,32 @@ sub incoming_process_packet {
    }
 
    my ($version_major, $version_minor, $command, $sequence_number) = 
-      unpack("CCnnC*", $message);
+      unpack("CCnn", $message);  
 
-   $DEBUG && warn "INCOMING:  Got command " . $server_commands_bynumber{$command} . "\n";
+   $message = substr($message, 6); # skip over six bytes /Jah
+
+   $DEBUG && warn "INCOMING:  Got command " . 
+                  $server_commands_bynumber{$command} . "\n";
 
    if ($command eq $server_commands{"ACK"}) {
       # ack is special case, we ignore it for the moment
+      # TODO we should keep track of packets sent (hash, indexed
+      #      by sequence number) and tick them off when they're
+      #      ACK'd.  Then resend things if they aren't.  Tricky.
       $DEBUG && warn "INCOMING:  Got ACK for packet $sequence_number\n";
    } else {
+      # common packet info
+      $self->{'icq_packet_info'} = [$version_major, $version_minor, $command, $sequence_number];
+      $DEBUG && warn "INCOMING: Sending ACK for packet $sequence_number\n";
       $self->send_ack($sequence_number);
 
-      # Process packet
-      if ($command eq $server_commands{"LOGIN_REPLY"}) { 
-         return &receive_login_reply($message);
-      } elsif ($command eq $server_commands{"USER_ONLINE"}) { 
-         return &receive_user_online($message);
-      } elsif ($command eq $server_commands{"USER_OFFLINE"}) { 
-         return &receive_user_offline($message);
-      } elsif ($command eq $server_commands{"USER_FOUND"}) { 
-         return &receive_user_found($message);
-      } elsif ($command eq $server_commands{"RECEIVE_MESSAGE"}) { 
-         return &receive_message($message);
-      } elsif ($command eq $server_commands{"END_OF_SEARCH"}) { 
-         return &receive_end_of_search($message);
-      } elsif ($command eq $server_commands{"INFO_REPLY"}) { 
-         return &receive_info_reply($message);
-      } elsif ($command eq $server_commands{"EXT_INFO_REPLY"}) { 
-         return &receive_ext_info_reply($message);
-      } elsif ($command eq $server_commands{"STATUS_UPDATE"}) { 
-         return &receive_status_update($message);
+      my $command_name = "receive_" . lc($server_commands_bynumber{$command});
+      my $coderef = $self->can($command_name);
+      if ($command_name && $coderef) {
+         # we've found a method that can process this type of packet
+         return &{$coderef}();
       } else {
-         # TODO: can't cope!!
-         #$DEBUG && "
+         # TODO: can't cope - what do we do with this packet!!
       }
    }
 }
@@ -557,49 +560,82 @@ Copes with responses from the ICQ server at packet level.
 
 =item receive_login_reply ( );
 
+Receive the login packet from the ICQ socket and respond to it appropriately.
+
 =cut
 sub receive_login_reply {
    my $self = shift;
+   my $packet = shift;
 
+   my ($user_uin, $user_ip, $login_seq) = unpack("N2n", $packet); # `unknown' fields ignored
+
+   $DEBUG && print "DEBUG: receive_login_reply() got user_uin=" . 
+                    dword_2_chars($user_uin) . 
+                    "  user_ip=$user_ip  login_seq=$login_seq\n";
+
+   return 1;
+}
+
+sub receive_reply_x2 {
+    my $self = shift;
+
+    $self->send_message($self->construct_message("LOGIN_2", pack("C",0)));
+    return 1;
 }
 
 sub receive_user_online {
    my $self = shift;
+
+   # TODO
 
 }
 
 sub receive_user_offline {
    my $self = shift;
 
+   # TODO
+
 }
 
 sub receive_user_found {
    my $self = shift;
+
+   # TODO
 
 }
 
 sub receive_message {
    my $self = shift;
 
+   # TODO
+
 }
 
 sub receive_end_of_search {
    my $self = shift;
+
+   # TODO
 
 }
 
 sub receive_info_reply {
    my $self = shift;
 
+   # TODO
+
 }
 
 sub receive_ext_info_reply {
    my $self = shift;
 
+   # TODO
+
 }
 
 sub receive_status_update {
    my $self = shift;
+
+   # TODO
 
 }
 
@@ -640,7 +676,7 @@ sub construct_message {
    my $self = shift;
    my $command = shift;
    my $data = shift || '';  # Assume data is already packed or whatever
-   my $seq_num = shift || ++$self->{"sequence_number"};
+   my $seq_num = @_ ? shift : ++$self->{"sequence_number"}; # fixed /Jah - seqs can be 0
 
    $DEBUG && warn "construct_message:  command '$command', seq_num '$seq_num', data '$data'\n";
    my $message = 
@@ -648,28 +684,42 @@ sub construct_message {
                        $ICQ_Version_Minor,
                        $client_commands{$command},
                        $seq_num,
-                       $self->{"uin"})
+  	               dword_2_chars($self->{"uin"}))
          . $data;
 
   return $message;
 }
 
-# Searches for a port that the server can use to talk to us
-sub find_incoming_port {
-   my $port = 9381;
+=pod
 
-   return $port;
+=item dword_2_chars ( DWORD )
+
+Returns the passed DWORD converted to Intel endian character sequence.
+
+=cut
+
+sub dword_2_chars
+{
+    my $num = shift;
+    my @buf;
+    my $buf;
+
+    $buf[0] = ($num>>24) & 0x000000FF;
+    $buf[1] = ($num>>16) & 0x000000FF;
+    $buf[2] = ($num>>8) & 0x000000FF;
+    $buf[3] = ($num) & 0x000000FF;
+
+    $buf  = $buf[3];
+    $buf <<= 8;
+    $buf |= $buf[2];
+    $buf <<= 8;
+    $buf |= $buf[1];
+    $buf <<= 8;
+    $buf |= $buf[0];
+
+    return($buf);
 }
 
-sub read_config_file {
-   my $config_file = shift;
-
-   my ($uin, $password, $host, $port, $status, @contacts);
-
-   # TODO
-
-   return ($uin, $password, $host, $port, $status, @contacts);
-}
 
 =pod
 

@@ -1,12 +1,11 @@
 
-
 Net::ICQ
 
 This is a really unfinished module for communicating with an ICQ
 server.
 
 *** YOU CAN'T USE IT YET.  IT'S NOT FINISHED.  IT JUST BARELY
-    INSTALLS AND WON'T RUN OR ANYTHING.
+    LOGS IN AND WON'T RUN OR ANYTHING.
 
     It's here because others are helping me create it and this
     is the easient way to share code :)
@@ -24,33 +23,43 @@ the library by running these commands:
    make install
 
 
-OTHER STUFF
+CONTACTS
+========
+
+   To contact me directly, <URL:mailto:gossamer@tertius.net.au> is
+   best.
+   
+   The icq-dev mailing list is for all the ICQ clones being developed,
+   see http://www.student.nada.kth.se/~d95-mih/icq/#icq-devel for
+   details.
+
+   There is an icq-perl mailing list specifically for people with an
+   interest in Net::ICQ.  Anybody interested in helping with
+   development or testing is encouraged to subscribe, as are people
+   who just want to keep track of what's going on with Net::ICQ.  It's
+   a standard majordomo list - to subscribe, send 'subscribe' to
+   icq-perl-request@tertius.net.au.  To post, address your message to
+   icq-perl@tertius.net.au.
+
+
+CREDITS
+=======
+   (Names in [...] are those used in the Changes file)
+
+   [Jah] - Jah Raphael <jah@dotshop.com>
+
+
+DISCLAIMERS
 ===========
-
-
-This is being constructed using the ICQ specification at:
-   http://www.student.nada.kth.se/~d95-mih/icq/
-
-Please note: 
    I am in no way affiliated with Mirabilis!
 
-   This is an unofficial module and not acknowledged, supported or
-   condoned by Mirabilis in any way.
-
-
-Contacting me:  
-   <URL:mailto:gossamer@tertius.net.au> is best, or the icq-dev
-   mailing list, see
-   http://www.student.nada.kth.se/~d95-mih/icq/#icq-devel for details.
-
-
-ObLegalStuff:
-   Copyright (c) 1998 Bek Oberin. All rights reserved. This program is
-   free software; you can redistribute it and/or modify it under the
-   same terms as Perl itself.
-
-ObOtherLegalStuff:
    This program was made without any help from Mirabilis or their
    consent.  Not reverse engineering or decompilation of any Mirabilis
    code took place to make this program.
+  
+
+   Copyright (c) 1998 Bek Oberin. All rights reserved. 
+   This program is free software; you can redistribute it and/or
+   modify it under the same terms as Perl itself.
+
 
