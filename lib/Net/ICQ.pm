@@ -10,7 +10,7 @@ package Net::ICQ;
 # This program is free software; you can redistribute it and/or modify
 # it under the same terms as Perl itself.
 #
-# Last updated by gossamer on Sat Oct  3 10:11:52 EST 1998
+# Last updated by gossamer on Sun Nov 22 11:30:40 EST 1998
 #
 
 use strict;
@@ -32,7 +32,7 @@ use Carp;                     # Regular Carp
 @EXPORT = qw();
 @EXPORT_OK = qw();
 
-$VERSION = "0.06";
+$VERSION = "0.07";
 
 =head1 NAME
 
@@ -63,11 +63,10 @@ my $ICQ_Version_Minor = 0;
 my $Default_ICQ_Port = 4000;
 my $Default_ICQ_Host = "icq1.mirabilis.com";
 
-my $Config_File = $ENV{"HOME"} . "/.net-icqrc";
-
 my $DEBUG = 1;
 
 # Status types
+# TODO there are new status options that I don't have
 my %user_status = (
    "ONLINE" => 0x00000000,
    "AWAY" => 0x01000000,
@@ -173,6 +172,7 @@ sub new {
       croak "Unknown ICQ UIN - please specify";
    $self->{"password"} = $password ||
       croak "Unknown ICQ password - please specify";
+   # TODO this should find the password in the .icqpw file
    $self->{"host"} = $host || $ENV{"ICQHOST"} || $Default_ICQ_Host;
    $self->{"port"} = $port || $ENV{"ICQPORT"} || $Default_ICQ_Port;
    chomp($self->{"tty"} = `tty`);
@@ -240,7 +240,6 @@ sub login {
 		     0x08007800);			                   # X5
 		     
    $self->send_message($self->construct_message("LOGIN", $data_pack));
-   # TODO grok messages they send back!
 
    return 1;
 }
@@ -288,16 +287,20 @@ sub search {
 
 Copes with responses from the ICQ server.
 
-=item incoming_packet_waiting ( );
+=item incoming_packet_waiting ( TIMEOUT );
 
 Check if there's something from the server waiting to be processed.
+
+To have it block waiting for input, call it with no argument.
+Otherwise the argument is the number of seconds before it times out.
 
 =cut
 
 sub incoming_packet_waiting {
    my $self = shift;
+   my $timeout = shift;
 
-   return $self->{"select"}->can_read(0);
+   return $self->{"select"}->can_read($timeout);
 }
 
 =pod
@@ -320,7 +323,6 @@ sub incoming_process_packet {
    unless ($sock->recv($message, 99999)) {
       croak "socket:  recv2:  $1";
    }
-   $DEBUG && warn "INCOMING:  Got " . length($message) . " bytes.\n";
 
    my ($version_major, $version_minor, $command, $sequence_number) = 
       unpack("CCnn", $message);  
@@ -340,7 +342,7 @@ sub incoming_process_packet {
       # ack is special case, we ignore it for the moment
       # TODO we should keep track of packets sent (hash, indexed
       #      by sequence number) and tick them off when they're
-      #      ACK'd.  Then resend things if they aren't.  Tricky.
+      #      ACK'd.  Then resend things if they aren't.  Fiddly.
       $DEBUG && warn "INCOMING:  Got ACK for packet $sequence_number\n";
    } else {
       # common packet info
@@ -355,6 +357,9 @@ sub incoming_process_packet {
          return $self->$command_name($message);
       } else {
          # TODO: can't cope - what do we do with this packet!!
+         warn "UNKNOWN PACKET TYPE: '$command', sequence number '$sequence_number'";
+         $DEBUG && warn "INCOMING: Unknown packet dump: $message";
+         return 0;
       }
    }
 }
@@ -374,6 +379,7 @@ sub send_ack {
    my $self = shift;
    my $seq_num = shift;
 
+   $DEBUG && warn ">>ACK\n";
    return $self->send_message($self->construct_message("ACK", "", $seq_num));
 }
 
@@ -388,9 +394,8 @@ Just tells the server this connection's still alive.  Send it every
 
 sub send_keepalive {
    my $self = shift;
-   my $uin = shift;
-   my $message = shift;
 
+   $DEBUG && warn ">>KEEPALIVE\n";
    return $self->send_message($self->construct_message("KEEP_ALIVE"));
 
 }
@@ -404,8 +409,9 @@ Tell the server who we're watching for, by UIN.
 
 sub send_contactlist {
    my $self = shift;
-   my @uins = shift;
+   my @uins = @_;
 
+   $DEBUG && warn ">>CONTACTLIST\n";
    my $data = pack("n", scalar(@uins));
    foreach (@uins) {
       $data .= pack("N", $_);
@@ -427,6 +433,7 @@ sub send_msg {
    my $uin = shift;
    my $message = shift;
 
+   $DEBUG && warn ">>SEND MSG\n";
    return $self->send_message($self->construct_message("SEND_MESSAGE",
       pack("NCCna*", $uin, 1, 0, length($message) + 1, $message . "\0")));
 
@@ -445,6 +452,7 @@ sub send_url {
    my $uin = shift;
    my $message = shift;
 
+   $DEBUG && warn ">>SEND URL\n";
    return $self->send_message($self->construct_message("SEND_MESSAGE",
       pack("NCCna*", $uin, 4, 0, length($message) + 1, $message . "\0")));
 
@@ -460,6 +468,7 @@ sub search_uin {
    my $self = shift;
    my $uin = shift;
 
+   $DEBUG && warn ">>SEARCH UIN\n";
    return $self->send_message($self->construct_message("SEARCH_UIN",
       pack("nN", ++$self->{"search_sequence_number"}, $uin)));
 }
@@ -477,6 +486,7 @@ sub search_user {
    my $last_name = shift;
    my $email = shift;
 
+   $DEBUG && warn ">>SEARCH USER\n";
    return $self->send_message($self->construct_message("SEARCH_USER",
       pack("nna*na*na*na*", ++$self->{"search_sequence_number"},
             length($nick_name) + 1,
@@ -501,6 +511,7 @@ sub request_userinfo {
    my $self = shift;
    my $uin = shift;
 
+   $DEBUG && warn ">>REQUEST USERINFO\n";
    return $self->send_message($self->construct_message("INFO_REQ",
       pack("nN", ++$self->{"info_sequence_number"}, $uin)));
 
@@ -517,6 +528,7 @@ sub request_userinfo_extended {
    my $self = shift;
    my $uin = shift;
 
+   $DEBUG && warn ">>REQUEST USERINFO EXTENDED\n";
    return $self->send_message($self->construct_message("EXT_INFO_REQ",
       pack("nN", ++$self->{"info_sequence_number"}, $uin)));
 
@@ -533,6 +545,7 @@ sub change_status {
    my $self = shift;
    my $status = shift;
 
+   $DEBUG && warn ">>CHANGE STATUS\n";
    # check it's a real status
    return undef unless defined($user_status{$status});
 
@@ -552,6 +565,7 @@ sub change_password {
    my $self = shift;
    my $passwd = shift;
 
+   $DEBUG && warn ">>PASSWORD\n";
    return $self->send_message($self->construct_message("CHANGE_PASSWORD",
       pack("nna*", ++$self->{"password_change_sequence_number"},
                    length($passwd) + 1,
@@ -575,7 +589,7 @@ sub receive_login_reply {
    my ($user_uin, $user_ip, $login_seq) = unpack("N2n", $message); 
       # `unknown' fields ignored
 
-   $DEBUG && print "DEBUG: receive_login_reply() got user_uin=" . 
+   $DEBUG && warn "<<RECEIVE_LOGIN_REPLY user_uin=" . 
                     dword_2_chars($user_uin) . 
                     "  user_ip=$user_ip  login_seq=$login_seq\n";
 
@@ -586,7 +600,16 @@ sub receive_reply_x2 {
    my $self = shift;
    my $message = shift;
 
+   $DEBUG && warn "<<USER REPLY X2\n";
    $self->send_message($self->construct_message("LOGIN_2", pack("C",0)));
+   return 1;
+}
+
+sub receive_silent_too_long {
+   my $self = shift;
+
+   $DEBUG && warn "<<SILENT TOO LONG\n";
+   $self->send_keepalive();
    return 1;
 }
 
@@ -594,24 +617,29 @@ sub receive_user_online {
    my $self = shift;
    my $message = shift;
 
+   $DEBUG && warn "<<USER ONLINE\n";
    # TODO
-
+   return 0;
 }
 
 sub receive_user_offline {
    my $self = shift;
    my $message = shift;
 
+   $DEBUG && warn "<<USER OFFLINE\n";
    # TODO
 
+   return 0;
 }
 
 sub receive_user_found {
    my $self = shift;
    my $message = shift;
 
+   $DEBUG && warn "<<USER FOUND\n";
    # TODO
 
+   return 0;
 }
 
 sub receive_receive_message {
@@ -621,39 +649,51 @@ sub receive_receive_message {
    my ($remote_uin, $year, $month, $day, $hour, $minute, $type, $length, $text)=
       unpack("NnCCCCnna*", $message);  
 
-  # TODO 
+   $DEBUG && warn "<<RECEIVE MESSAGE: From $remote_uin, at $hour:$minute on $day $month $year\n";
+   $DEBUG && warn "<<RECEIVE MESSAGE: Text: $text\n";
+   # TODO
+
+   return 0;
 }
 
 sub receive_end_of_search {
    my $self = shift;
    my $message = shift;
 
+   $DEBUG && warn "<<END OF SEARCH\n";
    # TODO
 
+   return 0;
 }
 
 sub receive_info_reply {
    my $self = shift;
    my $message = shift;
 
+   $DEBUG && warn "<<INFO REPLY\n";
    # TODO
 
+   return 0;
 }
 
 sub receive_ext_info_reply {
    my $self = shift;
    my $message = shift;
 
+   $DEBUG && warn "<<EXT INFO REPLY\n";
    # TODO
 
+   return 0;
 }
 
 sub receive_status_update {
    my $self = shift;
    my $message = shift;
 
+   $DEBUG && warn "<<STATUS UPDATE\n";
    # TODO
 
+   return 0;
 }
 
 

@@ -1,0 +1,10 @@
+
+Most TODOs are marked with that string in the code itself.  I've
+tried to mark every thing that needs doing.
+
+Extra stuff:
+
+In the example client, the background thread keeps running
+even though the foregound one's died.  How do I make it die
+nicely?
+

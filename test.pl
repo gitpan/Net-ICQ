@@ -19,12 +19,12 @@ print "ok 1\n";
 # of the test code):
 
 # Connect
-#my $ICQ = Net::ICQ->new();
-#if ($ICQ) {
-#   print "ok 2\n"
-#} else {
-#   print "not ok 2\n"
-#}
+my $ICQ = Net::ICQ->new();
+if ($ICQ) {
+   print "ok 2\n"
+} else {
+   print "not ok 2\n"
+}
 
 exit 0;
 

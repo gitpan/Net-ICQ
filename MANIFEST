@@ -1,7 +1,8 @@
+TODO
 README
 README.developing
 Changes
-ICQ.pm
+lib/Net/ICQ.pm
 MANIFEST
 Makefile.PL
 test.pl

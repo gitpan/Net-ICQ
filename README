@@ -4,12 +4,24 @@ Net::ICQ
 This is a really unfinished module for communicating with an ICQ
 server.
 
-*** YOU CAN'T USE IT YET.  IT'S NOT FINISHED.  IT JUST BARELY
-    LOGS IN AND WON'T RUN OR ANYTHING.
+*** YOU CAN'T USE IT YET.  IT'S NOT FINISHED.
+    BUT IT'S GETTING THERE!!
 
     It's here because others are helping me create it and this
     is the easient way to share code :)
 
+CHANGES
+=======
+
+Most recent changes are:
+0.06 -> 0.07
+   - Added separate TODO file.
+   - Added a bunch more debug output.
+   - SILENT_TOO_LONG packet now handled and replied too with a
+     KEEPALIVE packet.
+   - Made sure every function always returns some value.
+   - packet_waiting now accepts a timeout argument.
+   - Many changes to example client, it's now almost functional!
 
 INSTALLING
 ==========

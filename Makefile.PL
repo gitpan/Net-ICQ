@@ -79,6 +79,19 @@ if ($@) {
     print " got it\n";
 }
 
+print "Checking for Text::LineEditor (only needed for example client) ...";
+eval {
+    require Text::LineEditor;
+};
+if ($@) {
+    print " missing!\n";
+    $missing_modules++;
+    print "$@\n";
+    sleep(2);  # Don't hurry too much
+} else {
+    print " got it\n";
+}
+
 print <<EOT if $missing_modules;
 The missing modules can be obtained from CPAN - you'll need them to
 complete the installation.  
@@ -90,7 +103,7 @@ EOT
 use ExtUtils::MakeMaker;
 WriteMakefile(
     'NAME'	   => 'Net::ICQ',
-    'VERSION_FROM' => 'ICQ.pm',
+    'VERSION_FROM' => 'lib/Net/ICQ.pm',
 
     'dist'         => { 
                          COMPRESS => 'gzip -9f',

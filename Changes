@@ -2,6 +2,15 @@
       names in [...], all the ones without square brackets were
       done by Bek Oberin.)
 
+0.06 -> 0.07
+   - Added separate TODO file.
+   - Added a bunch more debug output.
+   - SILENT_TOO_LONG packet now handled and replied too with a
+     KEEPALIVE packet.
+   - Made sure every function always returns some value.
+   - packet_waiting now accepts a timeout argument.
+   - Many changes to example client, it's now almost functional!
+
 0.05 -> 0.06
    - Makefile now checks for IO::Select, Carp, Sys::Hostname, 
      Data::Dumper and IO::Socket since people reported them
