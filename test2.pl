@@ -19,7 +19,8 @@ my (
 
 $ready = 0;
 
-$icq = Net::ICQ->new($ARGV[0], $ARGV[1]);
+$icq = Net::ICQ->new($ARGV[0], $ARGV[1])
+    or print ("Please specify a UIN and password on the command line\n"), exit;
 
 $icq->{_debug} = 1;
 
@@ -35,13 +36,14 @@ $icq->add_handler('SRV_LOGIN_REPLY', \&handle_login_reply);
 $SIG{INT} = \&disconnect;
 
 
-print "not ready\n";
+$icq->connect();
+print "connecting...\n";
 while (!$ready) {
   $icq->do_one_loop;
 }
 print "ready\n";
 
-print "looping\n";
+print "looping (ctrl-c to exit)\n";
 $icq->start;
 
 
@@ -50,7 +52,7 @@ $icq->start;
 
 # dump event contents
 sub dump_event {
-  my ($event) = @_;
+  my ($icq, $event) = @_;
 
   print Dumper($event);
 }
@@ -59,7 +61,7 @@ sub dump_event {
 # send CMD_ACK_MESSAGES on X2 from server to keep it from sending us
 # any received offline msgs on next login
 sub handle_x2 {
-  my ($event) = @_;
+  my ($icq, $event) = @_;
 
   print (":X2\n");
   $icq->send_event('CMD_ACK_MESSAGES');
@@ -68,7 +70,7 @@ sub handle_x2 {
 
 # set ready to 1 to signal we can send events now
 sub handle_login_reply {
-  my ($event) = @_;
+  my ($icq, $event) = @_;
 
   print (":LOGIN_REPLY\n");
   $ready = 1;
@@ -77,5 +79,5 @@ sub handle_login_reply {
 
 sub disconnect {
   $icq->disconnect();
-#  exit();
+  exit();
 }

@@ -5,7 +5,9 @@ use strict;
 use vars qw(
   $VERSION
   @_table
-  %cmd_codes %srv_codes %status_codes
+  %cmd_codes %srv_codes
+  %status_codes %privacy_codes
+  %meta_codes %sex_codes %occupations %languages
   %_parsers %_msg_parsers %_meta_parsers
   %_builders %_msg_builders
 );
@@ -15,7 +17,7 @@ use IO::Select;
 use Time::Local;
 use Math::BigInt;
 
-$VERSION = '0.15';
+$VERSION = '0.16';
 
 
 # "encryption" table (grumble grumble...)
@@ -110,6 +112,7 @@ $VERSION = '0.15';
   SRV_TRY_AGAIN           => 250,
   SRV_SYS_DELIVERED_MESS  => 260,
   SRV_INFO_REPLY          => 280,
+  SRV_INFO_FAIL           => 300,
   SRV_EXT_INFO_REPLY      => 290,
   SRV_STATUS_UPDATE       => 420,
   SRV_SYSTEM_MESSAGE      => 450,
@@ -125,45 +128,170 @@ $VERSION = '0.15';
 
 
 %status_codes = (
-  ONLINE                  => 0x0,
-  AWAY                    => 0x1,
-  DO_NOT_DISTURB_2        => 0x2,
-  NOT_AVAILABLE           => 0x4,
-  NOT_AVAILABLE_2         => 0x5,
-  OCCUPIED                => 0x10,
-  DO_NOT_DISTURB          => 0x13,
-  FREE_FOR_CHAT           => 0x20,
-  INVISIBLE               => 0x100,
-  WEB_AWARE               => 0x10000,
-  SHOW_IP                 => 0x20000,
-  TCP_MUST_AUTH           => 0x10000000,
-  TCP_IF_ON_CONNECTLIST   => 0x20000000
+  ONLINE                  => 0x0000,
+  AWAY                    => 0x0001,
+  DO_NOT_DISTURB_2        => 0x0002,
+  NOT_AVAILABLE           => 0x0004,
+  NOT_AVAILABLE_2         => 0x0005,
+  OCCUPIED                => 0x0010,
+  DO_NOT_DISTURB          => 0x0013,
+  FREE_FOR_CHAT           => 0x0020,
+  INVISIBLE               => 0x0100
 );
 
+%privacy_codes = (
+  WEB_AWARE               => 0x0001,
+  SHOW_IP                 => 0x0002,
+  TCP_MUST_AUTH           => 0x1000,
+  TCP_IF_ON_CONNECTLIST   => 0x2000
+);
+
+%meta_codes = (
+  GENERAL_INFO        => 0x03E9,
+  WORK_INFO           => 0x03F3,
+  MORE_INFO           => 0x03FD,
+  ABOUT_INFO          => 0x0406,
+);
+
+%sex_codes = (
+  "UNSPECIFIED"           => 0,
+  "FEMALE"                => 1,
+  "MALE"                  => 2
+);
+
+%occupations = (
+  "Academic"                     => 1,
+  "Administrative"               => 2,
+  "Art/Entertainment"            => 3,
+  "College Student"              => 4,
+  "Computers"                    => 5,
+  "Community & Social"           => 6,
+  "Education"                    => 7,
+  "Engineering"                  => 8,
+  "Financial Services"           => 9,
+  "Government"                   => 10,
+  "High School Student"          => 11,
+  "Home"                         => 12,
+  "ICQ - Providing Help"         => 13,
+  "Law"                          => 14,
+  "Managerial"                   => 15,
+  "Manufacturing"                => 16,
+  "Medical/Health"               => 17,
+  "Military"                     => 18,
+  "Non-Government Organization"  => 19,
+  "Professional"                 => 20,
+  "Retail"                       => 21,
+  "Retired"                      => 22,
+  "Science & Research"           => 23,
+  "Sports"                       => 24,
+  "Technical"                    => 25,
+  "University Student"           => 26,
+  "Web Building"                 => 27,
+  "Other Services"               => 99,
+);
+
+%languages = (
+  1   => 'Arabic',
+  2   => 'Bhojpuri',
+  3   => 'Bulgarian',
+  4   => 'Burmese',
+  5   => 'Cantonese',
+  6   => 'Catalan',
+  7   => 'Chinese',
+  8   => 'Croatian',
+  9   => 'Czech',
+  10  => 'Danish',
+  11  => 'Dutch',
+  12  => 'English',
+  13  => 'Esperanto',
+  14  => 'Estonian',
+  15  => 'Farsi',
+  16  => 'Finnish',
+  17  => 'French',
+  18  => 'Gaelic',
+  19  => 'German',
+  20  => 'Greek',
+  21  => 'Hebrew',
+  22  => 'Hindi',
+  23  => 'Hungarian',
+  24  => 'Icelandic',
+  25  => 'Indonesian',
+  26  => 'Italian',
+  27  => 'Japanese',
+  28  => 'Khmer',
+  29  => 'Korean',
+  30  => 'Lao',
+  31  => 'Latvian',
+  32  => 'Lithuanian',
+  33  => 'Malay',
+  34  => 'Norwegian',
+  35  => 'Polish',
+  36  => 'Portuguese',
+  37  => 'Romanian',
+  38  => 'Russian',
+  39  => 'Serbian',
+  40  => 'Slovak',
+  41  => 'Slovenian',
+  42  => 'Somali',
+  43  => 'Spanish',
+  44  => 'Swahili',
+  45  => 'Swedish',
+  46  => 'Tagalog',
+  47  => 'Tatar',
+  48  => 'Thai',
+  49  => 'Turkish',
+  50  => 'Ukrainian',
+  51  => 'Urdu',
+  52  => 'Vietnamese',
+  53  => 'Yiddish',
+  54  => 'Yoruba',
+  55  => 'Afrikaans',
+  56  => 'Bosnian',
+  57  => 'Persian',
+  58  => 'Albanian',
+  59  => 'Armenian',
+  60  => 'Punjabi',
+  61  => 'Chamorro',
+  62  => 'Mongolian',
+  63  => 'Mandarin',
+  64  => 'Taiwaness',
+  65  => 'Macedonian',
+  66  => 'Sindhi',
+  67  => 'Welsh',
+  68  => 'Azerbaijani',
+  69  => 'Kurdish',
+  70  => 'Gujarati',
+  71  => 'Tamil',
+  72  => 'Belorussian',
+  73  => 'Unknown',
+);
 
 =head1 NAME
 
-Net::ICQ - Perl interface to an ICQ server
+Net::ICQ - Pure Perl interface to an ICQ server
 
 =head1 SYNOPSIS
 
   use Net::ICQ;
 
-  $icq = Net::ICQ->new();
+  $icq = Net::ICQ->new($uin, $password);
+  $icq->connect();
 
-  $icq->add_handler('SRV_NAME', \&sub_name);
-  $icq->send_event('CMD_NAME', $params);
+  $icq->add_handler('SRV_SYS_DELIVERED_MESS', \&on_msg);
 
-  while (!quit) {
-    $icq->do_one_loop();
-  }
+  $params = {
+    'type'         => 1,
+    'text'         => 'Hello world',
+    'receiver_uin' => 1234
+  };
+  $icq->send_event('CMD_SEND_MESSAGE', $params);
 
-  $icq->disconnect();
+  $icq->start();
 
 =head1 DESCRIPTION
 
 C<Net::ICQ> is a class implementing an ICQ client interface
-in Perl.
+in pure Perl.
 
 =cut
 
@@ -175,7 +303,8 @@ in Perl.
 
 new (uin, password [, server [, port]])
 
-Opens a connection to the ICQ server.  The UIN and
+Creates a new Net::ICQ object.  A Net::ICQ object represents
+a single user logged into a specific ICQ server.  The UIN and
 password to use are specified as the first two parameters.
 Server and port are optional, and default to
 'icq.mirabilis.com' and '4000', respectively.
@@ -192,8 +321,10 @@ variables.  The built-in defaults (for server and port only) have
 the lowest priority.
 
 If either a UIN or password is not provided either directly or
-through environment variables, new() will croak with an appropriate
-error message.
+through environment variables, new() will return undef.
+
+Note that after calling new() you must next call connect() before
+you can send and receive ICQ events.
 
 =back
 
@@ -203,8 +334,8 @@ sub new {
   my ($class, $uin, $password, $server, $port) = @_;
   my ($params);
 
-  $uin or $uin = $ENV{ICQ_UIN} or croak('No UIN!');
-  $password or $password = $ENV{ICQ_PASS} or croak('No password!');
+  $uin or $uin = $ENV{ICQ_UIN} or return;
+  $password or $password = $ENV{ICQ_PASS} or return;
   $server or $server = $ENV{ICQ_SERVER} or $server = 'icq.mirabilis.com';
   $port or $port = $ENV{ICQ_PORT} or $port = 4000;
 
@@ -213,9 +344,6 @@ sub new {
     _password => $password,
     _server => $server,
     _port => $port,
-    _session_id => int(rand(0xFFFFFFFF)),
-    _seq_num_1 => int(rand(0xFFFF)),
-    _seq_num_2 => 0x1,
     _socket => undef,
     _select => undef,
     _events_incoming => [], # array
@@ -224,7 +352,6 @@ sub new {
     _acks_outgoing   => [],
     _handlers => {},
     _last_keepalive => undef,
-    _connected => 1,
     _seen_seq => [],
     _debug => 0
   };
@@ -241,35 +368,112 @@ sub new {
 
   bless($self, $class);
 
-  # send a login event
-  $params = {
-    password => $password,
-    client_ip => $self->{_socket}->sockaddr(),
-    # FIX: deal with client_port correctly when TCP communication is implemented
-    client_port => 0
-  };
-  $self->send_event('CMD_LOGIN', $params, 1);
-
   return $self;
 }
 
 
 =head1 METHODS
 
-All of the following methods are instance methods.  That is,
-call them on a Net::ICQ object (for example, $icq->do_one_loop).
+All of the following methods are instance methods;
+you must call them on a Net::ICQ object (for example, $icq->start).
 
 =over 4
 
 =item *
 
+connect
+
+Connects the Net::ICQ object to the server.
+
+=cut
+
+sub connect {
+  my ($self) = @_;
+
+  $self->{_session_id} = int(rand(0xFFFFFFFF));
+  $self->{_seq_num_1}  = int(rand(0xFFFF));
+  $self->{_seq_num_2}  = 0x1;
+  $self->{_connected}  = 1;
+
+  # send a login event
+  my $params = {
+    password => $self->{_password},
+    client_ip => $self->{_socket}->sockaddr(),
+    # FIX: deal with client_port correctly when TCP communication is implemented
+    client_port => 0
+  };
+  $self->send_event('CMD_LOGIN', $params, 1);
+
+}
+
+
+=item *
+
+disconnect
+
+Disconnects the Net::ICQ object from the server.
+
+=cut
+
+sub disconnect {
+  my ($self) = @_;
+
+  $self->send_event('CMD_SEND_TEXT_CODE', {text_code => 'B_USER_DISCONNECTED'}, 1);
+  $self->_do_outgoing();
+  $self->{_connected} = 0;
+}
+
+
+=item *
+
+connected
+
+Returns true if the Net::ICQ object is connected to the server,
+and false if it is not.
+
+=cut
+
+sub connected {
+  my ($self) = @_;
+
+  return $self->{_connected};
+}
+
+
+=item *
+
+start
+
+If you're writing a fairly simple application that doesn't need to
+interface with other event-loop-based libraries, you can just call
+start() to begin communicating with the server.
+
+Note that start() will not return until the Net::ICQ object is
+disconnected from the server, either by the server itself or by
+your event-handler code calling disconnect().
+
+=cut
+
+sub start {
+  my ($self) = @_;
+
+  while ($self->connected) {
+    $self->do_one_loop();
+  }
+}
+
+
+=item *
+
 do_one_loop
 
-Unless you call the start() method (see below), you must
-continuously call do_one_loop whenever your Net::ICQ object
+If you don't want to (or can't) call the start() method, you must
+continuously call do_one_loop when your Net::ICQ object
 is connected to the server.  It uses select() to wait for
 data from the server and other ICQ clients, so it won't use
-CPU power even if you call it in a tight loop.
+CPU power even if you call it in a tight loop.  If you need
+to do other processing, you could call do_one_loop as
+infrequently as once every few seconds.
 
 This method does one processing loop, which involves looking
 for incoming data from the network, calling registered event
@@ -278,9 +482,8 @@ transmitting outgoing data over the network, and sending
 keepalives to the server to tell it that we are still online.
 If it is not called often enough, you will not be notified of
 incoming events in a timely fashion, or the server might even
-think you have disconnected and start to ignore you.  As
-mentioned above, you can't call this function too quickly, so
-don't worry about that and call it as fast as you can.
+think you have disconnected and start to ignore you.
+
 
 =cut
 
@@ -294,29 +497,6 @@ sub do_one_loop {
   $self->_do_timeouts();
   $self->_do_handlers();
   $self->_do_outgoing();
-}
-
-
-=item *
-
-start
-
-If you're writing a fairly simple application that doesn't need to
-interface with other event-loop-based libraries, you can just call
-start instead of repeatedly calling do_one_loop.  Essentially, the
-start method does this: S<C<while (connected) {do_one_loop}>>
-
-If you have called the start method, it will return after
-disconnect is called.
-
-=cut
-
-sub start {
-  my ($self) = @_;
-
-  while ($self->{_connected}) {
-    $self->do_one_loop();
-  }
 }
 
 
@@ -380,33 +560,6 @@ sub send_event {
     },
     $priority
   );
-}
-
-
-=item *
-
-disconnect()
-
-Disconnects the Net::ICQ object from the server.  Note that
-currently, the object becomes unusable for ICQ communication
-after disconnect is called.  In the future a connect method
-will be written which will allow the object to reconnect to
-the server, but this method does currently not exist.  (FIX!)
-
-The 'connected' field of the Net::ICQ object will be set
-to false after this method is called, and if you have
-called the start method, it will exit.
-
-=back
-
-=cut
-
-sub disconnect {
-  my ($self) = @_;
-
-  $self->send_event('CMD_SEND_TEXT_CODE', {text_code => 'B_USER_DISCONNECTED'}, 1);
-  $self->_do_outgoing();
-  $self->{_connected} = 0;
 }
 
 
@@ -511,7 +664,8 @@ message 'Hello world' to UIN 1234:
     $parsedevent->{ip}      = _bytes_to_int($event->{params}, 4, 4);
     $parsedevent->{port}    = _bytes_to_int($event->{params}, 8, 4);
     $parsedevent->{real_ip} = _bytes_to_int($event->{params}, 12, 4);
-    $parsedevent->{status}  = _bytes_to_int($event->{params}, 17, 4);
+    $parsedevent->{status}  = _bytes_to_int($event->{params}, 17, 2);
+    $parsedevent->{privacy} = _bytes_to_int($event->{params}, 19, 2);
     $event->{params}        = $parsedevent;
   },
   # SRV_USER_OFFLINE
@@ -709,13 +863,23 @@ message 'Hello world' to UIN 1234:
     #   01 = Female
     #   02 = Male
   },
+  #SRV_INFO_FAIL
+  300 => sub {
+    # thanks to Robin Fisher
+    my ($event) = @_;
+    my $parsedevent;
+
+    $parsedevent->{uin}       = _bytes_to_int($event->{params}, 0, 4);
+    $event->{params} = $parsedevent;
+  },
   # SRV_STATUS_UPDATE
   420 => sub {
     # RTG 8/26/2000
     my ($event) = @_;
     my $parsedevent;
     $parsedevent->{uin}    = _bytes_to_int($event->{params}, 0, 4);
-    $parsedevent->{status} = _bytes_to_int($event->{params}, 4, 4);
+    $parsedevent->{status} = _bytes_to_int($event->{params}, 4, 2);
+    $parsedevent->{privacy} = _bytes_to_int($event->{params}, 6, 2);
     $event->{params} = $parsedevent;
   },
   # SRV_SYSTEM_MESSAGE
@@ -750,12 +914,32 @@ message 'Hello world' to UIN 1234:
     $parsedevent->{subcmd}  = _bytes_to_int($event->{params}, 0, 2);
     $parsedevent->{success} = (_bytes_to_int($event->{params}, 2, 1) == 10);
     @$params                = @{$event->{params}}[3..@{$event->{params}}-1];
-    $parsedevent->{body}    = &{$_meta_parsers{$parsedevent->{subcmd}}}($params);
-    $event->{params}        = $parsedevent;
+    if (defined($_meta_parsers{$parsedevent->{subcmd}})){
+      $parsedevent->{body}  = &{$_meta_parsers{$parsedevent->{subcmd}}}($params);
+    } else {
+      $parsedevent->{body}  = {};
+    }
+    $event->{params} = $parsedevent;
   }
 );
 
 %_meta_parsers = (
+  #GENERAL_INFO
+  100    => sub {
+    return {}
+  },
+  #WORK_INFO
+  110    => sub {
+    return {}
+  },
+  #MORE_INFO
+  120    => sub {
+    return {}
+  },
+  #ABOUT_INFO
+  130    => sub {
+    return {}
+  },
   200    => sub {
     my ($params) = @_;
     my ($ret, $offset, $length);
@@ -1003,6 +1187,81 @@ message 'Hello world' to UIN 1234:
   },
   #CMD_META_USER
   1610 => sub {
+    my ($params) = @_;
+
+    # Thanks to Nezar Nielsen for this handler (wow!)
+    # (cleaned up and modified slightly by JLM 2/25/2001)
+
+    # convert string to numeric code if necessary
+    $params->{subcmd} = $meta_codes{$params->{subcmd}}
+      if exists($meta_codes{$params->{subcmd}});
+
+    my $return=[];
+    push @$return, _int_to_bytes(2, $params->{subcmd});
+
+    if ($params->{subcmd} == $meta_codes{GENERAL_INFO}) {
+      #1001 - serverresponse: 100
+      foreach ('nick', 'first', 'last',
+	       'primary_email', 'secondary_email', 'old_email',
+	       'city', 'state', 'phone', 'fax', 'street', 'cellular') {
+	push @$return, _int_to_bytes(2, length($params->{$_}     || '')+1);
+	push @$return, _str_to_bytes($params->{$_}               || '', 1);
+      }
+      # observe: this has changed since the spec was written,
+      # zipcode is also sent as text with null-termination.
+      push @$return, _int_to_bytes(2, length($params->{zipcode}  || '')+1);
+      push @$return, _str_to_bytes($params->{zipcode}            || '',1);
+      push @$return, _int_to_bytes(2, $params->{country}         || 0);
+      # timezone - don't know the spec for this
+      push @$return, _int_to_bytes(1, $params->{timezone}        || 0);
+      push @$return, _int_to_bytes(1, $params->{authorize}       || 0);
+      push @$return, _int_to_bytes(1, $params->{webaware}        || 0);
+      push @$return, _int_to_bytes(1, $params->{hideip}          || 0);
+
+    } elsif ($params->{subcmd} == $meta_codes{WORK_INFO}) {
+      #1011 - serverresponse: 110
+      # FIX: Does not work, allthough it sends the info exactly like ICQ 2000b
+      # (which sends it through TCP).
+      foreach ('city', 'state', 'phone', 'fax', 'addr') {
+	push @$return, _int_to_bytes(2, length($params->{$_}     || '')+1);
+	push @$return, _str_to_bytes($params->{$_}               || '', 1);
+      }
+      # i sniffed my client (ICQ 2000b), and i can see that it sends the zipcode
+      # like the other null-terminated strings
+      push @$return, _int_to_bytes(2, length($params->{zipcode}  || '')+1);
+      push @$return, _str_to_bytes($params->{zipcode}            || '', 1);
+      push @$return, _int_to_bytes(2, $params->{country}         || 0);
+      foreach ('company', 'dept', 'pos') {
+	push @$return, _int_to_bytes(2, length($params->{$_}     || '')+1);
+	push @$return, _str_to_bytes($params->{$_}               || '', 1);
+      }
+      # got occupation codes from the Icqlib source, and sniffed my way to see that
+      # my icq client sends two bytes here with the number according to what i chose.
+      push @$return, _int_to_bytes(2, $params->{occupation});
+      push @$return, _int_to_bytes(2, length($params->{url}      || '') + 1);
+      push @$return, _str_to_bytes($params->{url}                || '', 1);
+
+    } elsif ($params->{subcmd} == $meta_codes{MORE_INFO}) {
+      #metauser code: 1021 - serverresponse: 120
+      push @$return, _int_to_bytes(2, $params->{age}             || 0xFFFF);
+      push @$return, _int_to_bytes(1, $sex_codes{uc($params->{sex})} || $sex_codes{UNSPECIFIED});
+      push @$return, _int_to_bytes(2, length($params->{url}      || '')+1);
+      push @$return, _str_to_bytes($params->{url}                || '', 1);
+      push @$return, _int_to_bytes(2, $params->{year});
+      push @$return, _int_to_bytes(1, $params->{month}           || 1);
+      push @$return, _int_to_bytes(1, $params->{day}             || 1);
+      # three spoken languages (or set to 0)
+      push @$return, _int_to_bytes(1, $params->{lang1}           || 0);
+      push @$return, _int_to_bytes(1, $params->{lang2}           || 0);
+      push @$return, _int_to_bytes(1, $params->{lang3}           || 0);
+
+    } elsif ($params->{subcmd} == $meta_codes{ABOUT_INFO}) {
+      #1030 - serverresponse: 130
+      push @$return, _int_to_bytes(2, length($params->{about}    || '')+1);
+      push @$return, _str_to_bytes($params->{about}              || '',1);
+    }
+
+    return $return;
   },
   #CMD_INVIS_LIST
   1700 => sub {
@@ -1255,7 +1514,7 @@ sub _do_multis {
       if ($self->{_debug}) {
 	print ' <+ multi #', $event->{seq_num_1}, ' ';
 	_print_packet(\@packet);
-	print "\n";
+	print " <", $event->{command},">\n";
       }
 
     } # end for
@@ -1332,7 +1591,7 @@ sub _do_handlers {
 	if ( exists $_parsers{$_->{command}} );
 
       #call the handler
-      &{$self->{_handlers}{$_->{command}}}($_);
+      &{$self->{_handlers}{$_->{command}}}($self, $_);
 
     } # end if
   } # end foreach
@@ -1569,14 +1828,22 @@ sub _parse_packet {
   my ($self, $packet) = @_;
   my ($event, @params);
 
+  # Thanks to Robin Fisher for this fix for V3 packets.
+  # if it's a version 3 packet, change the header to match a version 5 packet.
+  # (apparently, the only difference in V5 is the addition of the session id)
+  if (_bytes_to_int($packet, 0, 2) == 3) {
+    print("OOPS: Server sent a V3 packet.  Converting to V5.\n");
+    splice @$packet, 0, 2, (5, 0, 0, _int_to_bytes(4, $self->{_session_id}));
+  }
+
   # sanity checks
   if (_bytes_to_int($packet, 3, 4) != $self->{_session_id}) {
     print("OOPS: Server told us the wrong session ID!\n") if $self->{_debug};
-    $self->{_connected} = 0;
+    $self->disconnect;
   }
   if (_bytes_to_int($packet, 13, 4) != $self->{_uin}) {
     print("OOPS: Server told us the wrong UIN!\n") if $self->{_debug};
-    $self->{_connected} = 0;
+    $self->disconnect;
   }
 
   # fill in the event's fields
