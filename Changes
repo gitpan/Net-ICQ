@@ -34,3 +34,55 @@ added debug print for add_handler, cleaned up other debug prints, fixed
 do_multis so it removes multis from the queue after processing them
 
 added perl 5.6 check to Makefile.PL
+
+
+0.14
+====
+
+fixed stupid syntax error in ICQ.pm (did that go into a release...?)
+and updated test.pl to be more clear and enlightening
+
+fixed dumb Makefile.PL error, wasn't actually checking for Time::Local before
+
+made cmd_codes and srv_codes public
+
+wrote the CLIENT EVENTS section in pod
+
+added test2.pl
+
+
+0.15
+====
+
+Set status in the CMD_LOGIN packet to ONLINE instead of 0x200
+
+Modified behavior when a bad session id or uin is found in a server packet: now _connected
+is set to 0, and it won't croak(). (thanks Banda)
+
+Applied Bek Oberin's fix to SRV_RECV_MESSAGE to calculate the month correctly.
+
+Fixed an undefined value issue in _str_to_bytes (thanks again to Bek for noticing).
+
+Changed SRV_RECV_MESSAGE code to call SRV_SYS_DELIVERED_MESSAGE for the bulk of the
+processing, instead of cut-and-pasting its code.
+
+added %status_codes
+
+Implemented Germain Malenfant's fix for CMD_SEARCH_UIN.
+
+Implemented Dimitar Peikov's fix to make _bytes_to_str correctly handle strings containing
+a '0' character. (boy was that a dumb bug on my part :)
+
+Modified debug output of incoming packets to also display the command number in <>
+brackets, after the dump of the param bytes.
+
+Fixed add_handler debug statement
+
+Added Nezar Nielsen's code to handle web-pager and email-pager messages.
+
+Applied Nezar Nielsen's fixes to make SRV_FOUND_USER work right, as well as make
+SRV_INFO_REPLY and SRV_EXT_INFO_REPLY work in the first place.
+
+Fixed problem with the same event being sent multiple times by the server because of lagged
+acks.
+

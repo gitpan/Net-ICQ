@@ -5,7 +5,7 @@ use strict;
 use vars qw(
   $VERSION
   @_table
-  %_cmd_codes %_srv_codes
+  %cmd_codes %srv_codes %status_codes
   %_parsers %_msg_parsers %_meta_parsers
   %_builders %_msg_builders
 );
@@ -15,7 +15,7 @@ use IO::Select;
 use Time::Local;
 use Math::BigInt;
 
-$VERSION = '0.13';
+$VERSION = '0.15';
 
 
 # "encryption" table (grumble grumble...)
@@ -55,7 +55,7 @@ $VERSION = '0.13';
 );
 
 
-%_cmd_codes = (
+%cmd_codes = (
   CMD_ACK                 => 10,
   CMD_SEND_MESSAGE        => 270,
   CMD_LOGIN               => 1000,
@@ -91,7 +91,7 @@ $VERSION = '0.13';
 );
 
 
-%_srv_codes = (
+%srv_codes = (
   SRV_ACK                 => 10,
   SRV_GO_AWAY             => 40,
   SRV_NEW_UIN             => 70,
@@ -120,6 +120,24 @@ $VERSION = '0.13';
   SRV_X1                  => 540,
   SRV_RAND_USER           => 590,
   SRV_META_USER           => 990
+);
+
+
+
+%status_codes = (
+  ONLINE                  => 0x0,
+  AWAY                    => 0x1,
+  DO_NOT_DISTURB_2        => 0x2,
+  NOT_AVAILABLE           => 0x4,
+  NOT_AVAILABLE_2         => 0x5,
+  OCCUPIED                => 0x10,
+  DO_NOT_DISTURB          => 0x13,
+  FREE_FOR_CHAT           => 0x20,
+  INVISIBLE               => 0x100,
+  WEB_AWARE               => 0x10000,
+  SHOW_IP                 => 0x20000,
+  TCP_MUST_AUTH           => 0x10000000,
+  TCP_IF_ON_CONNECTLIST   => 0x20000000
 );
 
 
@@ -207,6 +225,7 @@ sub new {
     _handlers => {},
     _last_keepalive => undef,
     _connected => 1,
+    _seen_seq => [],
     _debug => 0
   };
 
@@ -244,7 +263,7 @@ call them on a Net::ICQ object (for example, $icq->do_one_loop).
 
 =item *
 
-do_one_loop()
+do_one_loop
 
 Unless you call the start() method (see below), you must
 continuously call do_one_loop whenever your Net::ICQ object
@@ -280,12 +299,12 @@ sub do_one_loop {
 
 =item *
 
-start()
+start
 
 If you're writing a fairly simple application that doesn't need to
 interface with other event-loop-based libraries, you can just call
 start instead of repeatedly calling do_one_loop.  Essentially, the
-start method does this: while(connected) { do_one_loop }
+start method does this: S<C<while (connected) {do_one_loop}>>
 
 If you have called the start method, it will return after
 disconnect is called.
@@ -321,11 +340,12 @@ sub add_handler {
   my ($self, $command, $sub) = @_;
   my ($command_num);
 
-  $command_num = exists $_srv_codes{$command} ?
-    $_srv_codes{$command} :
+  $command_num = exists $srv_codes{$command} ?
+    $srv_codes{$command} :
     $command;
 
-  print "=== add handler <", sprintf("%04X", $command_num), "> = $sub\n";
+  print "=== add handler <", sprintf("%04X", $command_num), "> = $sub\n"
+      if $self->{_debug};
 
   $self->{_handlers}{$command_num} = $sub;
 }
@@ -350,8 +370,8 @@ explanation of the correct parameters for each event.
 sub send_event {
   my ($self, $command, $params, $priority) = @_;
 
-  $command = $_cmd_codes{$command}
-    if exists ($_cmd_codes{$command});
+  $command = $cmd_codes{$command}
+    if exists ($cmd_codes{$command});
 
   $self->_queue_event(
     {
@@ -388,6 +408,70 @@ sub disconnect {
   $self->_do_outgoing();
   $self->{_connected} = 0;
 }
+
+
+=head1 CLIENT EVENTS
+
+Client events are the messages an ICQ client, i.e. your code,
+sends to the server.  They represent things such as a logon
+request, a message to another user, or a user search request.
+They are sometimes called 'commands' because they represent
+the 'commands' that an ICQ client can execute.
+
+When you ask Net::ICQ to send an event with send_event()
+(described above), you need to provide 2 things:
+the event name, and the parameters.
+
+=head2 Event name
+
+The event name is the first parameter to send_event(),
+and it specifies which event you are sending.  You may either
+specify the string code or the numeric code.  The section
+CLIENT EVENT LIST below describes all the events and
+gives the codes for each.  For example: when sending a
+text message to a user, you may give the event name as
+either the string 'CMD_SEND_MESSAGE' or the number 270.
+
+The hash C<%Net::ICQ::cmd_codes> maps string codes to numeric
+codes.  C<keys(%Net::ICQ::cmd_codes)> will produce a list of
+all the string codes.
+
+=head2 Parameters
+
+The parameters list is the second parameter to send_event(),
+and it specifies the data for the event.  Every event has
+its own parameter list, but the general idea is the same.
+The parameters list is stored as a hashref, where the hash
+contains a key for each parameter.  Almost all the events
+utilize a regular 1-level hash where the values are plain
+scalars, but a few events do require 2-level hash.  The
+CLIENT EVENT LIST section lists the parameters for every
+client event.
+
+For example: to send a normal text message with the text
+'Hello world' to UIN 1234, the parameters would
+look like this:
+
+  {
+    'type'         => 1,
+    'text'         => 'Hello world',
+    'receiver_uin' => 1234
+  }
+
+=head2 A complete example
+
+Here is the complete code using send_event() to send the
+message 'Hello world' to UIN 1234:
+
+  $params = {
+    'type'         => 1,
+    'text'         => 'Hello world',
+    'receiver_uin' => 1234
+  };
+  $icq->send_event('CMD_SEND_MESSAGE', $params);
+
+=cut
+
 
 %_parsers = (
   # SRV_ACK
@@ -451,11 +535,18 @@ sub disconnect {
     $offset = 4;
     foreach ('nickname', 'firstname', 'lastname', 'email') {
       $length                 = _bytes_to_int($event->{params}, $offset, 2);
-      $parsedevent->{$_}      = _bytes_to_str($event->{params}, $offset + 2, $length - 1);
-      $offset                += $length;
+      $offset += 2; # Fixed: NN 06 jan 01
+      $parsedevent->{$_}      = _bytes_to_str($event->{params}, $offset, $length - 1);
+      $offset += $length;
     }
     $parsedevent->{authorize} = _bytes_to_str($event->{params}, $offset, 1);
-    $event->{params}          = $parsedevent;
+    $event->{params} = $parsedevent;
+
+    # AUTHORIZE can contain either 00 or 01:
+    #   00 means that your client should request authorization before
+    #      adding this user to the contact list.
+    #   01 means that authorization is not required to add him/her to
+    #      your contact list.
   },
   # SRV_END_OF_SEARCH
   160 => sub {
@@ -476,46 +567,24 @@ sub disconnect {
   # SRV_RECV_MESSAGE
   220 => sub {
     my ($event) = @_;
-    my ($parsedevent, @strings, @tmp);
+    my ($parsedevent, @time);
 
-    $parsedevent->{uin}    = _bytes_to_int($event->{params}, 0, 4);
-    $parsedevent->{time}   = timelocal(0,     #sec
-      _bytes_to_int($event->{params}, 9, 1),  #min
-      _bytes_to_int($event->{params}, 8, 1),  #hour
-      _bytes_to_int($event->{params}, 7, 1),  #day
-      _bytes_to_int($event->{params}, 6, 1),  #mon
-      _bytes_to_int($event->{params}, 4, 2)   #year
+    # Remove the bytes storing the time of the message, which makes the
+    # params look just like a regular online message (SRV_SYS_DELIVERED_MESS).
+    # Then, we can use that handler directly instead of copying its code here.
+    # Mirabilis really dropped the ball on this one, defining two separate
+    # events where it should really just be one...
+    @time = splice(@{$event->{params}}, 4, 6, ());
+    &{$_parsers{260}}($event);
+
+    # we still need to insert the time
+    $event->{params}->{time} = timelocal(0, # sec
+      _bytes_to_int(\@time, 5, 1),          # min
+      _bytes_to_int(\@time, 4, 1),          # hour
+      _bytes_to_int(\@time, 3, 1),          # day
+      _bytes_to_int(\@time, 2, 1)-1,        # mon (thanks Bek Oberin for the -1)
+      _bytes_to_int(\@time, 0, 2)           # year
     );
-    $parsedevent->{type}   = _bytes_to_int($event->{params}, 10, 2);
-    $parsedevent->{length} = _bytes_to_int($event->{params}, 12, 2);
-
-    @strings = _bytes_to_strlist([@{$event->{params}}[14..@{$event->{params}}-1]]);
-    if      ($parsedevent->{type} == 1) {
-      $parsedevent->{text}        = $strings[0];
-    } elsif ($parsedevent->{type} == 4) {
-      $parsedevent->{description} = $strings[0];
-      $parsedevent->{url}         = $strings[1];
-    } elsif ($parsedevent->{type} == 6) {
-      $parsedevent->{nickname}    = $strings[0];
-      $parsedevent->{firstname}   = $strings[1];
-      $parsedevent->{lastname}    = $strings[2];
-      $parsedevent->{email}       = $strings[3];
-      $parsedevent->{reason}      = $strings[4];
-    } elsif ($parsedevent->{type} == 8) {
-    } elsif ($parsedevent->{type} == 12) {
-      $parsedevent->{nickname}    = $strings[0];
-      $parsedevent->{firstname}   = $strings[1];
-      $parsedevent->{lastname}    = $strings[2];
-      $parsedevent->{email}       = $strings[3];
-    } elsif ($parsedevent->{type} == 19) {
-      $parsedevent->{contacts} = {};
-      shift @strings; # remove first element - number of contacts
-      for (my $i=0; $i<@strings-1; $i+=2) {
-	$parsedevent->{contacts}{$strings[$i]} = $strings[$i+1];
-      }
-    }
-
-    $event->{params} = $parsedevent;
   },
   # SRV_X2
   230 => sub {
@@ -555,6 +624,20 @@ sub disconnect {
       $parsedevent->{firstname}   = $strings[1];
       $parsedevent->{lastname}    = $strings[2];
       $parsedevent->{email}       = $strings[3];
+    } elsif ($parsedevent->{type} == 13) {
+      $parsedevent->{name}        = $strings[0];
+      $parsedevent->{unknown1}    = $strings[1];
+      $parsedevent->{unknown2}    = $strings[2];
+      $parsedevent->{email}       = $strings[3];
+      $parsedevent->{unknown3}    = $strings[4]; #always has value: 3
+      $parsedevent->{message}     = $strings[5];
+    } elsif ($parsedevent->{type} == 14){
+      $parsedevent->{name}        = $strings[0];
+      $parsedevent->{unknown1}    = $strings[1];
+      $parsedevent->{unknown2}    = $strings[2];
+      $parsedevent->{email}       = $strings[3];
+      $parsedevent->{unknown3}    = $strings[4]; #always has value: 3
+      $parsedevent->{message}     = $strings[5];
     } elsif ($parsedevent->{type} == 19) {
       $parsedevent->{contacts} = {};
       shift @strings; # remove first element - number of contacts
@@ -567,11 +650,64 @@ sub disconnect {
   },
   # SRV_INFO_REPLY
   280 => sub {
-    #FIX : don't know what to do here ..
+    # (same as SRV_USER_FOUND, above)
+    my ($event) = @_;
+    my ($parsedevent, $offset, $length);
+
+    $parsedevent->{uin}       = _bytes_to_int($event->{params}, 0, 4);
+    $offset = 4;
+    foreach ('nickname', 'firstname', 'lastname', 'email') {
+      $length                 = _bytes_to_int($event->{params}, $offset, 2);
+      $offset += 2; # Fixed: NN 06 jan 01
+      $parsedevent->{$_}      = _bytes_to_str($event->{params}, $offset, $length - 1);
+      $offset += $length;
+    }
+    $parsedevent->{authorize} = _bytes_to_str($event->{params}, $offset, 1);
+    $event->{params} = $parsedevent;
   },
   # SRV_EXT_INFO_REPLY
   290 => sub {
-    #FIX : don't know what to do here ..
+    # Thanks to Nezar Nielsen for this bit.
+    my ($event) = @_;
+    my ($parsedevent, $offset, $length);
+
+    $parsedevent->{uin}            = _bytes_to_int($event->{params}, 0, 4);
+    my $citylength                 = _bytes_to_int($event->{params}, 4, 2);
+    $parsedevent->{city}           = _bytes_to_str($event->{params}, 6, $citylength - 1);
+    $offset = 6 + $citylength;
+    $parsedevent->{country_code}   = _bytes_to_int($event->{params}, $offset, 2);
+    $offset += 2;
+    $parsedevent->{country_status} = _bytes_to_int($event->{params}, $offset,1);
+    $offset += 1;
+    my $statelength                = _bytes_to_int($event->{params}, $offset,2);
+    $offset += 2;
+    $parsedevent->{state}          = _bytes_to_str($event->{params}, $offset,$statelength - 1);
+    $offset += $statelength;
+    $parsedevent->{age}            = _bytes_to_int($event->{params}, $offset, 2);
+    $offset += 2;
+    $parsedevent->{sex}            = _bytes_to_int($event->{params}, $offset, 1);
+    $offset += 1;
+    for('phone', 'home_page', 'about'){
+       my $length                  = _bytes_to_int($event->{params}, $offset, 2);
+       $offset += 2;
+       $parsedevent->{$_}          = _bytes_to_str($event->{params}, $offset, $length - 1);
+       $offset += $length;
+    }
+    # done parsing
+    $event->{params} = $parsedevent;
+
+    # And from the specification (pretty much), here is some extra info:
+    #
+    # The code used in COUNTRY_CODE is the international telephone prefix, e.g.
+    #   01 00 (1) for the USA, 2C 00 (44) for the UK, 2E 00 (46) for Sweden, etc.
+    #   COUNTRY_STATUS is normally FE, unless the remote user has not entered a
+    #   country, in which case COUNTRY_CODE will be FF FF, and COUNTRY_STATUS
+    #   will be 9C.
+    # The field AGE has the value FF FF if the user has not entered his/her age.
+    # Values for SEX:
+    #   00 = Not specified
+    #   01 = Female
+    #   02 = Male
   },
   # SRV_STATUS_UPDATE
   420 => sub {
@@ -581,7 +717,7 @@ sub disconnect {
     $parsedevent->{uin}    = _bytes_to_int($event->{params}, 0, 4);
     $parsedevent->{status} = _bytes_to_int($event->{params}, 4, 4);
     $event->{params} = $parsedevent;
-  },  },
+  },
   # SRV_SYSTEM_MESSAGE
   450 => sub {
     #FIX : don't know what to do here ..
@@ -694,7 +830,7 @@ sub disconnect {
       _int_to_bytes(4, 0xD5),
       _str_to_bytes($params->{client_ip}),
       _int_to_bytes(1, 4),
-      _int_to_bytes(4, 0x200),
+      _int_to_bytes(4, $status_codes{ONLINE}),
       _int_to_bytes(2, 6),
       _int_to_bytes(2, 0),
       _int_to_bytes(4, 0),
@@ -722,6 +858,7 @@ sub disconnect {
     my ($ret, $num);
 
     $num = $params->{num_contacts};
+    # FIX: this shouldn't croak!  handle it gracefully..
     croak ("120 contact limit, send more than one packet")
       if ($num > 120);
 
@@ -734,10 +871,10 @@ sub disconnect {
   },
   #CMD_SEARCH_UIN
   1050 => sub {
+    # thanks to Germain Malenfant for the fix
     my ($params) = @_;
     return [
-      _int_to_bytes(2, $params->{search_seq}),
-      _int_to_bytes(4, $params->{search_uin})
+      _int_to_bytes(4, $params->{uin})
     ];
   },
   #CMD_SEARCH_USER
@@ -1015,16 +1152,32 @@ sub _do_incoming {
     if ($self->{_debug}) {
       print '<-- event #', $event->{seq_num_1}, ' ';
       _print_packet(\@packet);
+      print " <", $event->{command},">\n";
     }
 
     # put acks in separate array because they will be handled immediately.
     if ( $event->{is_ack} ) {
         push @{$self->{_acks_incoming}}, $event;
     }
-    # stick everything else in the incoming events list
+    # stick everything that hasn't already been seen in the incoming events list
     else {
-        push @{$self->{_events_incoming}}, $event;
-    }
+      my $not_in_array = 1;
+      foreach my $seq ( @{$self->{_seen_seq}} ) { 
+	if ($seq == $event->{seq_num_1}) {
+	  $not_in_array = 0;
+	  last;
+	}
+      }
+      if ($not_in_array) {
+	  push @{$self->{_events_incoming}}, $event;
+	  push @{$self->{_seen_seq}}, $event->{seq_num_1};
+
+	  if (@{$self->{_seen_seq}} > 20) {
+	    shift @{$self->{_seen_seq}};
+	  }
+      } 
+      
+    } # end else
   } # end while
 } # end sub _do_incoming
 
@@ -1102,6 +1255,7 @@ sub _do_multis {
       if ($self->{_debug}) {
 	print ' <+ multi #', $event->{seq_num_1}, ' ';
 	_print_packet(\@packet);
+	print "\n";
       }
 
     } # end for
@@ -1174,7 +1328,7 @@ sub _do_handlers {
     # if a handler for this event has been registered
     if (exists $self->{_handlers}{$_->{command}} ) {
       # parse the raw event params
-      my $parsedevent = &{$_parsers{$_->{command}}}($_)
+      &{$_parsers{$_->{command}}}($_)
 	if ( exists $_parsers{$_->{command}} );
 
       #call the handler
@@ -1416,11 +1570,14 @@ sub _parse_packet {
   my ($event, @params);
 
   # sanity checks
-  # FIX: maybe handle these more gracefully?  :)
-  _bytes_to_int($packet, 3, 4) == $self->{_session_id}
-    or croak("Server told us the wrong session ID!");
-  _bytes_to_int($packet, 13, 4) == $self->{_uin}
-    or croak("Server told us the wrong UIN!");
+  if (_bytes_to_int($packet, 3, 4) != $self->{_session_id}) {
+    print("OOPS: Server told us the wrong session ID!\n") if $self->{_debug};
+    $self->{_connected} = 0;
+  }
+  if (_bytes_to_int($packet, 13, 4) != $self->{_uin}) {
+    print("OOPS: Server told us the wrong UIN!\n") if $self->{_debug};
+    $self->{_connected} = 0;
+  }
 
   # fill in the event's fields
   $event = {};
@@ -1475,7 +1632,8 @@ sub _str_to_bytes {
   my ($string, $add_zero) = @_;
   my (@ret);
 
-  foreach (split('', $string)) {
+  # the ?: keeps split() from complaining about undefined values
+  foreach (split('', defined($string) ? $string : '')) {
     push @ret, ord($_);
   }
   push @ret, 0 if $add_zero;
@@ -1515,12 +1673,13 @@ sub _bytes_to_int {
 # _bytes_to_str([0x12, 'f', 'o', 'o', '!'], 1, 3) == 'foo'
 
 sub _bytes_to_str {
+  # thanks to Dimitar Peikov for the fix
   my ($array, $start, $bytes) = @_;
   my ($ret);
 
   $ret = '';
   for (my $i = $start; $i < $start+$bytes; $i++) {
-    $ret .= (chr($array->[$i]) or '');
+    $ret .= $array->[$i] ? chr($array->[$i]) : '';
   }
 
   return $ret;
@@ -1573,7 +1732,7 @@ sub _print_packet {
   foreach (@$packet) {
     print sprintf("%02X ", $_);
   }
-  print "]\n";
+  print "]";
 
 }
 
