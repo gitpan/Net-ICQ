@@ -2,6 +2,15 @@
       names in [...], all the ones without square brackets were
       done by Bek Oberin.)
 
+0.05 -> 0.06
+   - Makefile now checks for IO::Select, Carp, Sys::Hostname, 
+     Data::Dumper and IO::Socket since people reported them
+     missing and I'm not sure when each of them became stardard
+     Perl modules.
+   - Fixed packet number for GO_AWAY packet.
+   - Better debugging info when unknown packet received.
+   - Added TRY_AGAIN server packet type.
+
 0.04 -> 0.05
    - Added new argument, $status, to constructor.
    - Updated README file, added info about icq-dev@tertius.net.au.

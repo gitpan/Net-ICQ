@@ -1,10 +1,10 @@
 
 README.developing
 
-You get extra bonus points for doing things "my way" because it
-lets me integrate code waaaaaay easier.  This means your changes
-will be integrated quick and I will be happy and a bunch of
-other good stuff :)
+You get extra bonus points for doing things "my way" because it lets
+me integrate code waaaaaay easier.  This means your changes will be
+integrated quick and I will be happy and a bunch of other good stuff
+:)
 
 Important stuff:
    - The recieve_some_packet() functions do NOT have to ack packets,
@@ -18,7 +18,7 @@ Important stuff:
 Nitpicks:
    These sound like really picky bullshit but if all the code's in
    the same "style" then it's -much- easier to skim it and not miss
-   things.  Style stuff would be ...
+   things :).  Style stuff would be ...
 
    - Three character indents, spaces not tabs, and copy the bracing
      in the other code.

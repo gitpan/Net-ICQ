@@ -24,6 +24,61 @@ if ($@) {
     print " got it\n";
 }
 
+
+print "Checking for Data::Dumper ...";
+eval {
+    require Data::Dumper;
+};
+if ($@) {
+    print " missing!\n";
+    $missing_modules++;
+    print "$@\n";
+    sleep(2);  # Don't hurry too much
+} else {
+    print " got it\n";
+}
+
+
+print "Checking for IO::Select ...";
+eval {
+    require IO::Select;
+};
+if ($@) {
+    print " missing!\n";
+    $missing_modules++;
+    print "$@\n";
+    sleep(2);  # Don't hurry too much
+} else {
+    print " got it\n";
+}
+
+
+print "Checking for Sys::Hostname ...";
+eval {
+    require Sys::Hostname;
+};
+if ($@) {
+    print " missing!\n";
+    $missing_modules++;
+    print "$@\n";
+    sleep(2);  # Don't hurry too much
+} else {
+    print " got it\n";
+}
+
+print "Checking for Carp ...";
+eval {
+    require Carp;
+};
+if ($@) {
+    print " missing!\n";
+    $missing_modules++;
+    print "$@\n";
+    sleep(2);  # Don't hurry too much
+} else {
+    print " got it\n";
+}
+
 print <<EOT if $missing_modules;
 The missing modules can be obtained from CPAN - you'll need them to
 complete the installation.  

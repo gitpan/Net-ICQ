@@ -10,7 +10,7 @@ package Net::ICQ;
 # This program is free software; you can redistribute it and/or modify
 # it under the same terms as Perl itself.
 #
-# Last updated by gossamer on Thu Sep 24 19:10:34 EST 1998
+# Last updated by gossamer on Sat Oct  3 10:11:52 EST 1998
 #
 
 use strict;
@@ -32,7 +32,7 @@ use Carp;                     # Regular Carp
 @EXPORT = qw();
 @EXPORT_OK = qw();
 
-$VERSION = "0.05";
+$VERSION = "0.06";
 
 =head1 NAME
 
@@ -78,56 +78,57 @@ my %user_status_bynumber = reverse %user_status;
 
 # Packet types
 my %server_commands_bynumber = (
+   0x00F0 => "GO_AWAY",
    0x0a00 => "ACK",	
+   0x1801 => "INFO_REPLY",
+   0x1C02 => "REPLY_X1",
+   0x2201 => "EXT_INFO_REPLY",
+   0x2800 => "SILENT_TOO_LONG",
+   0x4600 => "NEW_USER_UIN",
    0x5a00 => "LOGIN_REPLY",
+   0x6400 => "BAD_LOGIN",
    0x6e00 => "USER_ONLINE",
    0x7800 => "USER_OFFLINE",
-   0x8C00 => "USER_FOUND",
-   0xDC00 => "RECEIVE_MESSAGE",
-   0xA000 => "END_OF_SEARCH",
-   0x1801 => "INFO_REPLY",
-   0x2201 => "EXT_INFO_REPLY",
-   0xA401 => "STATUS_UPDATE",
-   0x1C02 => "REPLY_X1",
-   0xE600 => "REPLY_X2",
-   0xE001 => "UPDATE_REPLY",
-   0xC800 => "UPDATE_EXT_REPLY",
-   0x4600 => "NEW_USER_UIN",
-   0xB400 => "NEW_USER_REPLY",
    0x8200 => "QUERY_REPLY",
+   0x8C00 => "USER_FOUND",
+   0xA000 => "END_OF_SEARCH",
+   0xA401 => "STATUS_UPDATE",
+   0xB400 => "NEW_USER_REPLY",
    0xC201 => "SYSTEM_MESSAGE",
-   0x6400 => "BAD_LOGIN",
-   0x2800 => "SILENT_TOO_LONG",
-   0xF000 => "GO_AWAY",
+   0xC800 => "UPDATE_EXT_REPLY",
+   0xDC00 => "RECEIVE_MESSAGE",
+   0xE001 => "UPDATE_REPLY",
+   0xE600 => "REPLY_X2",
+   0xFA00 => "TRY_AGAIN",
    );
 my %server_commands = reverse %server_commands_bynumber;
 
 my %client_commands_bynumber = (
-   0x0A00 => "ACK",
-   0x0E01 => "SEND_MESSAGE",
-   0xE803 => "LOGIN",
    0x0604 => "CONTACT_LIST",
+   0x0A00 => "ACK",
+   0x0A05 => "UPDATE_INFO",
+   0x0E01 => "SEND_MESSAGE",
    0x1A04 => "SEARCH_UIN",
    0x2404 => "SEARCH_USER",
+   0x2805 => "LOGIN_2",
    0x2E04 => "KEEP_ALIVE",
    0x3804 => "SEND_TEXT_CODE",
+   0x3C05 => "ADD_TO_LIST",
+   0x4204 => "CMD_X1",
    0x4C04 => "LOGIN_1",
+   0x5604 => "MSG_TO_NEW_USER",
+   0x5604 => "REQ_ADD_TO_LIST",
    0x6004 => "INFO_REQ",
    0x6A04 => "EXT_INFO_REQ",
    0x9C04 => "CHANGE_PASSWORD",
-   0xD804 => "STATUS_CHANGE",
-   0x2805 => "LOGIN_2",
-   0x0A05 => "UPDATE_INFO",
+   0xA604 => "NEW_USER_INFO",
    0xB004 => "UPDATE_EXT_INFO",
-   0x3C05 => "ADD_TO_LIST",
-   0x5604 => "REQ_ADD_TO_LIST",
    0xBA04 => "QUERY_SERVERS",
    0xC404 => "QUERY_ADDONS",
+   0xD804 => "STATUS_CHANGE",
+   0xE803 => "LOGIN",
    0xEC04 => "NEW_USER_1",
    0xFC03 => "NEW_USER_REG",
-   0xA604 => "NEW_USER_INFO",
-   0x4204 => "CMD_X1",
-   0x5604 => "MSG_TO_NEW_USER",
    );
 my %client_commands = reverse %client_commands_bynumber;
 
@@ -229,7 +230,8 @@ sub login {
 		     $self->{"password"} . "\0",	          # PASSWORD
 		     $self->{"socket"}->sockaddr,	       # USER_IP
 		     defined($user_status_bynumber{$self->{"status"}}) 
-		          ? $self->{"status"} : 0x00000000, # STATUS 
+		          ? $self->{"status"} : $user_status{"ONLINE"}, 
+                                                 # STATUS 
 		     ++$self->{"login_seq_num"},	          # LOGIN_SEQ_NUM
 		     0x78000000, 			                   # X1
 		     0x04,				                      # X2
@@ -311,26 +313,29 @@ sub incoming_process_packet {
    my $server;
    my $message;
    
-   $DEBUG && warn "INCOMING:  Waiting for incoming packet ...\n";
+   $DEBUG && warn "INCOMING:  Reading incoming packet ...\n";
 
    my $sock = $self->{"socket"};
-   unless ($sock->recv($message, 2048)) {
-      croak "socket:  recv:  $1";
+
+   unless ($sock->recv($message, 99999)) {
+      croak "socket:  recv2:  $1";
    }
-   if ($DEBUG) {
-      my($port, $ipaddr) = sockaddr_in($sock->peername);
-      my $hishost = gethostbyaddr($ipaddr, AF_INET);
-      warn "DEBUG:  INCOMING $hishost sent '" . Dumper($message) . "'\n";
-   }
+   $DEBUG && warn "INCOMING:  Got " . length($message) . " bytes.\n";
 
    my ($version_major, $version_minor, $command, $sequence_number) = 
       unpack("CCnn", $message);  
 
+   if ($DEBUG) {
+      my $command_hex = uc(sprintf("%#04x", $command));
+      if (my $sc = $server_commands_bynumber{$command}) {
+         warn "INCOMING:  Got command " .  
+               $server_commands_bynumber{$command} . " ($command/$command_hex) sequence $sequence_number\n";
+      } else {
+         warn "INCOMING:  Got unknown command number $command/$command_hex sequence $sequence_number\n";
+      }
+   }
+
    $message = substr($message, 6); # skip over six bytes /Jah
-
-   $DEBUG && warn "INCOMING:  Got command " . 
-                  $server_commands_bynumber{$command} . "\n";
-
    if ($command eq $server_commands{"ACK"}) {
       # ack is special case, we ignore it for the moment
       # TODO we should keep track of packets sent (hash, indexed
@@ -347,7 +352,7 @@ sub incoming_process_packet {
       my $coderef = $self->can($command_name);
       if ($command_name && $coderef) {
          # we've found a method that can process this type of packet
-         return &{$coderef}();
+         return $self->$command_name($message);
       } else {
          # TODO: can't cope - what do we do with this packet!!
       }
@@ -565,9 +570,10 @@ Receive the login packet from the ICQ socket and respond to it appropriately.
 =cut
 sub receive_login_reply {
    my $self = shift;
-   my $packet = shift;
+   my $message = shift;
 
-   my ($user_uin, $user_ip, $login_seq) = unpack("N2n", $packet); # `unknown' fields ignored
+   my ($user_uin, $user_ip, $login_seq) = unpack("N2n", $message); 
+      # `unknown' fields ignored
 
    $DEBUG && print "DEBUG: receive_login_reply() got user_uin=" . 
                     dword_2_chars($user_uin) . 
@@ -577,14 +583,16 @@ sub receive_login_reply {
 }
 
 sub receive_reply_x2 {
-    my $self = shift;
+   my $self = shift;
+   my $message = shift;
 
-    $self->send_message($self->construct_message("LOGIN_2", pack("C",0)));
-    return 1;
+   $self->send_message($self->construct_message("LOGIN_2", pack("C",0)));
+   return 1;
 }
 
 sub receive_user_online {
    my $self = shift;
+   my $message = shift;
 
    # TODO
 
@@ -592,6 +600,7 @@ sub receive_user_online {
 
 sub receive_user_offline {
    my $self = shift;
+   my $message = shift;
 
    # TODO
 
@@ -599,20 +608,25 @@ sub receive_user_offline {
 
 sub receive_user_found {
    my $self = shift;
+   my $message = shift;
 
    # TODO
 
 }
 
-sub receive_message {
+sub receive_receive_message {
    my $self = shift;
+   my $message = shift;
 
-   # TODO
+   my ($remote_uin, $year, $month, $day, $hour, $minute, $type, $length, $text)=
+      unpack("NnCCCCnna*", $message);  
 
+  # TODO 
 }
 
 sub receive_end_of_search {
    my $self = shift;
+   my $message = shift;
 
    # TODO
 
@@ -620,6 +634,7 @@ sub receive_end_of_search {
 
 sub receive_info_reply {
    my $self = shift;
+   my $message = shift;
 
    # TODO
 
@@ -627,6 +642,7 @@ sub receive_info_reply {
 
 sub receive_ext_info_reply {
    my $self = shift;
+   my $message = shift;
 
    # TODO
 
@@ -634,6 +650,7 @@ sub receive_ext_info_reply {
 
 sub receive_status_update {
    my $self = shift;
+   my $message = shift;
 
    # TODO
 
@@ -678,7 +695,8 @@ sub construct_message {
    my $data = shift || '';  # Assume data is already packed or whatever
    my $seq_num = @_ ? shift : ++$self->{"sequence_number"}; # fixed /Jah - seqs can be 0
 
-   $DEBUG && warn "construct_message:  command '$command', seq_num '$seq_num', data '$data'\n";
+   $DEBUG && warn "construct_message:  command '$command', seq_num '$seq_num'\n";
+
    my $message = 
          pack("CCnnN", $ICQ_Version_Major, 
                        $ICQ_Version_Minor,
